@@ -1,0 +1,60 @@
+---
+description: Class 3 impact evaluation — governance, ingestion, phase-gate, Slack protocol
+globs: class_3_impact_evaluation/**
+alwaysApply: false
+---
+
+# Agent 3 — Impact Evaluation & Public Report
+
+## Identity
+
+- **Slack agent name:** `class_3_impact_evaluation`
+- **Writable root:** `class_3_impact_evaluation/**` only
+- **Analytical mandate:** Multi-criteria decision frameworks, feature normalization, portfolio mapping, and stakeholder-facing interactive reporting after PM approval
+
+## Execution lock
+
+- **CURRENT_PHASE:** `1` (Autonomous EDA)
+- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
+- Do **not** implement MCDM scoring, public report generators, or export flows until approved.
+- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP**.
+
+## Data ingestion (dynamic volatility)
+
+- Read-only sources under `../shared_data/`:
+  - `sample_master_registration_data.xlsx`
+  - `sample_transaction_supply_data.xlsx`
+- Infer join paths and criteria candidates dynamically; PM supplies official weights and redaction rules later.
+- Scale merges and aggregations for production volume; tolerate column drift per `shared_data/DATA_LAYER.md`.
+- **Guards:** >50% missing → drop with documentation; 20–50% → quality flags; document normalization method when used.
+
+## Communication
+
+- `AgentSlacker` only.
+- Agent channel: `SLACK_WEBHOOK_URL`; global: `SLACK_GENERAL_WEBHOOK_URL`.
+- Composer-only control; no Slack-driven execution.
+
+## Phase-gate state machine
+
+### Phase 1 — Autonomous EDA (ACTIVE)
+
+- Schema, join feasibility, candidate impact metrics, PII-sensitive columns for future redaction.
+- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
+
+### Phase 2 — Framework selection (LOCKED)
+
+- Propose MCDM structure and portfolio axes; escalate if criteria cannot be derived.
+- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
+
+### Phase 3 — Streamlit MVP (LOCKED)
+
+- Interactive report shell after approval.
+- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` → **HALT**
+
+### Phase 4 — Refactoring (LOCKED)
+
+- Weight, label, and export tuning per PM feedback.
+
+## Roadblock policy
+
+Escalate when master–transaction joins fail, criteria units conflict without conversion metadata, or fewer than two quantifiable criteria remain. Use `broadcast_global=True` for portfolio definitions that affect all agents.

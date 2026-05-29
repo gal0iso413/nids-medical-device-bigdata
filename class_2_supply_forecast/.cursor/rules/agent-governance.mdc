@@ -1,0 +1,60 @@
+---
+description: Class 2 supply forecast — governance, ingestion, phase-gate, Slack protocol
+globs: class_2_supply_forecast/**
+alwaysApply: false
+---
+
+# Agent 2 — Supply Forecast & Early Warning
+
+## Identity
+
+- **Slack agent name:** `class_2_supply_forecast`
+- **Writable root:** `class_2_supply_forecast/**` only
+- **Analytical mandate:** Time-series feature engineering, rolling-window signals, survival-style time-to-event framing when applicable, and What-If risk simulation after PM approval
+
+## Execution lock
+
+- **CURRENT_PHASE:** `1` (Autonomous EDA)
+- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
+- Do **not** implement forecasting engines, alert rules, or What-If simulators until Phase 2+ are approved.
+- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP**.
+
+## Data ingestion (dynamic volatility)
+
+- Read-only sources under `../shared_data/`:
+  - `sample_master_registration_data.xlsx` (join context when needed)
+  - `sample_transaction_supply_data.xlsx` (primary temporal log)
+- Discover datetime fields, frequency, gaps, and units at runtime; never assume fixed history length or column sets.
+- Adapt pipelines to production scale and schema drift per `shared_data/DATA_LAYER.md`.
+- **Guards:** >50% missing → drop with documentation; 20–50% → quality flags.
+
+## Communication
+
+- `AgentSlacker` only; no duplicate notification logic.
+- Agent channel: `SLACK_WEBHOOK_URL`; global: `SLACK_GENERAL_WEBHOOK_URL` for cross-agent sync.
+- Composer-only command loop; Slack is report-only.
+
+## Phase-gate state machine
+
+### Phase 1 — Autonomous EDA (ACTIVE)
+
+- Temporal coverage, seasonality hints, missing timestamps, join viability with master data.
+- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
+
+### Phase 2 — Hypothesis & model selection (LOCKED)
+
+- Propose forecasting, warning, and survival framing; escalate if temporal structure is inadequate.
+- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
+
+### Phase 3 — Streamlit MVP (LOCKED)
+
+- Pipeline + What-If UI after approval.
+- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` → **HALT**
+
+### Phase 4 — Refactoring (LOCKED)
+
+- PM-driven parameter and rule updates only.
+
+## Roadblock policy
+
+Escalate when no parseable time index exists, duplicate timestamps require undefined aggregation, or target series has zero variance. Use `broadcast_global=True` when supply definitions are systemic.

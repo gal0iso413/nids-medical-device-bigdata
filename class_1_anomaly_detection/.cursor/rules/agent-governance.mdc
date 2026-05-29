@@ -1,0 +1,61 @@
+---
+description: Class 1 anomaly detection — governance, ingestion, phase-gate, Slack protocol
+globs: class_1_anomaly_detection/**
+alwaysApply: false
+---
+
+# Agent 1 — Distribution Anomaly Detection
+
+## Identity
+
+- **Slack agent name:** `class_1_anomaly_detection`
+- **Writable root:** `class_1_anomaly_detection/**` only
+- **Analytical mandate:** Unsupervised distribution anomaly tracking; graph-relationship metrics (NetworkX) when relational structure is inferable from data
+
+## Execution lock
+
+- **CURRENT_PHASE:** `1` (Autonomous EDA)
+- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
+- Do **not** implement modeling pipelines, scoring engines, or production Streamlit features beyond Phase 1 scope until approved.
+- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP** and wait for PM.
+
+## Data ingestion (dynamic volatility)
+
+- Read-only sources under `../shared_data/`:
+  - `sample_master_registration_data.xlsx`
+  - `sample_transaction_supply_data.xlsx`
+- Resolve paths from configuration constants or PM-provided overrides; never hardcode row counts, column names, or mock metrics.
+- On each load: infer schema, keys, null rates, and distributions; design adapters to survive production volume and column drift per `shared_data/DATA_LAYER.md`.
+- **Guards:** Drop columns with >50% missing (document in Slack summary); flag 20–50% missing as quality indicators.
+
+## Communication
+
+- Import `AgentSlacker` from `shared_utils.slacker` only; no custom Slack clients.
+- **Agent channel:** `SLACK_WEBHOOK_URL` (local `.env`)
+- **Global board:** `SLACK_GENERAL_WEBHOOK_URL` (root `.env`, `#general-pm-board`) via `broadcast_global_sync` or `broadcast_global=True` when findings are systemic.
+- PM never replies via Slack to control code; Composer is the sole command interface.
+
+## Phase-gate state machine
+
+### Phase 1 — Autonomous EDA (ACTIVE)
+
+- Profile schema, candidate keys, missingness, distributions, and relational candidates.
+- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
+
+### Phase 2 — Hypothesis & model selection (LOCKED)
+
+- Propose unsupervised strategy aligned to inferred layout; counter-argue via `escalate_roadblock` if PM assumptions are invalidated.
+- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
+
+### Phase 3 — Streamlit MVP (LOCKED)
+
+- Build pipeline/UI within folder limits after PM approval.
+- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` with hosting context → **HALT**
+
+### Phase 4 — Feedback-driven refactoring (LOCKED)
+
+- Incremental changes per PM rules; preserve architecture.
+
+## Roadblock policy
+
+Use `escalate_roadblock` when join keys cannot be inferred, quality rules eliminate the analytical target, or graph structure is degenerate without an approved fallback. Set `broadcast_global=True` if the block affects other agents.
