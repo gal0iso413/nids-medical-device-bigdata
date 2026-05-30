@@ -1,5 +1,5 @@
 ---
-description: Class 2 supply forecast — governance, ingestion, phase-gate, Slack protocol
+description: Class 2 supply forecast — governance, doc anchoring, PROGRESS memory, phase-gate
 globs: class_2_supply_forecast/**
 alwaysApply: false
 ---
@@ -9,52 +9,55 @@ alwaysApply: false
 ## Identity
 
 - **Slack agent name:** `class_2_supply_forecast`
-- **Writable root:** `class_2_supply_forecast/**` only
-- **Analytical mandate:** Time-series feature engineering, rolling-window signals, survival-style time-to-event framing when applicable, and What-If risk simulation after PM approval
+- **Writable root:** `class_2_supply_forecast/**` only (includes `PROGRESS.md`)
+- **Analytical mandate:** Time-series signals, rolling windows, survival-style framing when applicable, What-If simulation after approval
+
+## Runtime awakening (first step)
+
+On session start, after PM spec changes, or before substantive work:
+
+1. Read `class_2_supply_forecast/PROGRESS.md` (≤20 lines).
+2. Re-sync with `shared_docs/` using the anchoring order below.
+3. Update `PROGRESS.md` only if phase state or doc sync materially changed.
+
+## Mandatory context anchoring (Hierarchy of Truth)
+
+1. `shared_docs/common/project_overview.md`
+2. `shared_docs/common/data_schema_blueprint.md`
+3. `shared_docs/structured/class_2_forecast_spec.md` — **supreme** over `common/` on conflict
+
+**Do not** read `class_1_anomaly_spec.md` or `class_3_evaluation_spec.md`. `shared_docs/official/` is reference-only unless PM directs.
+
+## PROGRESS.md memory engine
+
+- **Path:** `class_2_supply_forecast/PROGRESS.md`
+- **Max:** 20 lines; bullets only; no tracebacks/code dumps/shell output
+- Update on phase completion or PM directive integration; prune to stay within cap
 
 ## Execution lock
 
 - **CURRENT_PHASE:** `1` (Autonomous EDA)
-- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
-- Do **not** implement forecasting engines, alert rules, or What-If simulators until Phase 2+ are approved.
-- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP**.
+- No Phase 2–4 implementation without PM approval in Composer
+- Phase 1 exit: Slack notify + `PROGRESS.md` → **STOP**
 
-## Data ingestion (dynamic volatility)
+## Data ingestion
 
-- Read-only sources under `../shared_data/`:
-  - `sample_master_registration_data.xlsx` (join context when needed)
-  - `sample_transaction_supply_data.xlsx` (primary temporal log)
-- Discover datetime fields, frequency, gaps, and units at runtime; never assume fixed history length or column sets.
-- Adapt pipelines to production scale and schema drift per `shared_data/DATA_LAYER.md`.
-- **Guards:** >50% missing → drop with documentation; 20–50% → quality flags.
+- Read-only: `shared_data/sample_transaction_supply_data.xlsx` (primary); master file when join context required
+- Follow `data_schema_blueprint.md`; dynamic discovery only
 
 ## Communication
 
-- `AgentSlacker` only; no duplicate notification logic.
-- Agent channel: `SLACK_WEBHOOK_URL`; global: `SLACK_GENERAL_WEBHOOK_URL` for cross-agent sync.
-- Composer-only command loop; Slack is report-only.
+- `AgentSlacker` only; Composer-only control loop
 
 ## Phase-gate state machine
 
-### Phase 1 — Autonomous EDA (ACTIVE)
-
-- Temporal coverage, seasonality hints, missing timestamps, join viability with master data.
-- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
-
-### Phase 2 — Hypothesis & model selection (LOCKED)
-
-- Propose forecasting, warning, and survival framing; escalate if temporal structure is inadequate.
-- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
-
-### Phase 3 — Streamlit MVP (LOCKED)
-
-- Pipeline + What-If UI after approval.
-- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` → **HALT**
-
-### Phase 4 — Refactoring (LOCKED)
-
-- PM-driven parameter and rule updates only.
+| Phase | Status | Exit |
+|-------|--------|------|
+| 1 EDA | **ACTIVE** | Slack + `PROGRESS.md` → HALT |
+| 2 Strategy | LOCKED | Slack → HALT |
+| 3 MVP | LOCKED | Slack → HALT |
+| 4 Refactor | LOCKED | Per PM |
 
 ## Roadblock policy
 
-Escalate when no parseable time index exists, duplicate timestamps require undefined aggregation, or target series has zero variance. Use `broadcast_global=True` when supply definitions are systemic.
+Escalate on missing time index, undefined duplicate-timestamp aggregation, or zero-variance targets; `broadcast_global=True` when supply definitions are systemic.

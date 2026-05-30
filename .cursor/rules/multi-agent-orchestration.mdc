@@ -1,5 +1,5 @@
 ---
-description: Workspace-wide multi-agent orchestration, data layer, and Slack control protocol
+description: Workspace-wide multi-agent orchestration, data layer, documentation, and Slack control protocol
 alwaysApply: true
 ---
 
@@ -9,36 +9,41 @@ alwaysApply: true
 
 | Path | Access |
 |------|--------|
-| `shared_data/` | Read-only for all agents |
+| `shared_data/` | Read-only — transactional datasets |
+| `shared_docs/` | Read-only — domain docs (`official/`, `structured/`, `common/`) |
 | `shared_utils/` | Immutable; import `AgentSlacker` only |
-| `class_1_anomaly_detection/` | Agent 1 writable root |
-| `class_2_supply_forecast/` | Agent 2 writable root |
-| `class_3_impact_evaluation/` | Agent 3 writable root |
+| `class_1_anomaly_detection/` | Agent 1 writable root (+ `PROGRESS.md`) |
+| `class_2_supply_forecast/` | Agent 2 writable root (+ `PROGRESS.md`) |
+| `class_3_impact_evaluation/` | Agent 3 writable root (+ `PROGRESS.md`) |
 
-Agents must not modify files outside their designated folder.
+Agents must not modify files outside their designated folder. `shared_docs/` is PM-maintained; agents read only.
+
+## Documentation architecture (`shared_docs/`)
+
+| Tier | Purpose |
+|------|---------|
+| `common/` | Universal context for all agents |
+| `structured/` | Per-agent specifications (override `common/` on conflict) |
+| `official/` | Immutable stakeholder logs (reference material) |
+
+Agents follow **Hierarchy of Truth** and context anchoring defined in each `class_*/.cursor/rules/agent-governance.mdc`.
 
 ## Data layer (`shared_data/`)
 
-- **Sample tier (current):** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
-- **Production tier (future):** PM may replace files or add paths; ingestion must adapt without architectural rewrites (see `shared_data/DATA_LAYER.md`).
-- **Dynamic volatility:** Discover schema and volume at runtime; guard column access; scale reads for large files; re-profile on structural drift and notify PM.
+- **Sample tier:** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
+- **Ingestion rules:** `shared_docs/common/data_schema_blueprint.md` + `shared_data/DATA_LAYER.md`
+- **Dynamic volatility:** Runtime discovery, profiling, scale, and drift tolerance — no hardcoded schemas in code.
 
 ## Communication (`shared_utils/slacker.py`)
 
 - **Agent channel:** `SLACK_WEBHOOK_URL` in each agent `.env`
 - **Global board:** `SLACK_GENERAL_WEBHOOK_URL` in root `.env` → `#general-pm-board`
-- Use `broadcast_global_sync` for cross-agent parameter changes, shared discoveries, and systemic constraints.
-- Use `broadcast_global=True` on phase/roadblock methods only when a finding affects all agents.
-
-## Control loop (non-negotiable)
-
-- Slack is **outbound-only**. No Slack listener, bot commands, or remote code triggers.
-- PM issues all execution commands, phase advances, and unblocks in **Cursor Composer**.
+- Slack is **outbound-only**; PM commands in **Cursor Composer** only.
 
 ## Active phase (workspace default)
 
-**Phase 1 — Autonomous EDA** is locked until the PM explicitly approves advancement per agent. Do not auto-implement Phase 2–4 pipelines.
+**Phase 1 — Autonomous EDA** is locked until the PM explicitly approves advancement per agent.
 
 ## Language
 
-English only across code, comments, logs, UI, and Slack payloads.
+English only across code, comments, logs, UI, Slack, and documentation updates inside agent folders.

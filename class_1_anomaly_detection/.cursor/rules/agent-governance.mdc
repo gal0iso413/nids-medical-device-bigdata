@@ -1,5 +1,5 @@
 ---
-description: Class 1 anomaly detection — governance, ingestion, phase-gate, Slack protocol
+description: Class 1 anomaly detection — governance, doc anchoring, PROGRESS memory, phase-gate
 globs: class_1_anomaly_detection/**
 alwaysApply: false
 ---
@@ -9,53 +9,59 @@ alwaysApply: false
 ## Identity
 
 - **Slack agent name:** `class_1_anomaly_detection`
-- **Writable root:** `class_1_anomaly_detection/**` only
-- **Analytical mandate:** Unsupervised distribution anomaly tracking; graph-relationship metrics (NetworkX) when relational structure is inferable from data
+- **Writable root:** `class_1_anomaly_detection/**` only (includes `PROGRESS.md`)
+- **Analytical mandate:** Unsupervised distribution anomaly tracking; graph metrics when relational structure is inferable
+
+## Runtime awakening (first step)
+
+On session start, after PM spec changes, or before substantive work:
+
+1. Read `class_1_anomaly_detection/PROGRESS.md` (≤20 lines).
+2. Re-sync with `shared_docs/` using the anchoring order below.
+3. Append a one-bullet shift to `PROGRESS.md` only if phase state or doc sync materially changed.
+
+## Mandatory context anchoring (Hierarchy of Truth)
+
+Load and blend **in this order**:
+
+1. `shared_docs/common/project_overview.md`
+2. `shared_docs/common/data_schema_blueprint.md`
+3. `shared_docs/structured/class_1_anomaly_spec.md` — **supreme** over `common/` on any conflict
+
+**Do not** read parallel structured specs (`class_2_forecast_spec.md`, `class_3_evaluation_spec.md`). Official logs under `shared_docs/official/` are reference-only unless PM directs otherwise.
+
+## PROGRESS.md memory engine
+
+- **Path:** `class_1_anomaly_detection/PROGRESS.md`
+- **Max length:** 20 lines total; bullets only
+- **Forbidden:** tracebacks, full code blocks, shell dumps, narrative essays
+- **When to update:** phase completion, PM directive integrated, or doc-sync milestone
+- **Prune** older bullets to stay within the line cap
 
 ## Execution lock
 
 - **CURRENT_PHASE:** `1` (Autonomous EDA)
-- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
-- Do **not** implement modeling pipelines, scoring engines, or production Streamlit features beyond Phase 1 scope until approved.
-- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP** and wait for PM.
+- Do **not** auto-advance to Phase 2–4 without explicit PM approval in Cursor Composer.
+- After Phase 1 EDA, `notify_phase_completion` once → update `PROGRESS.md` → **STOP**
 
-## Data ingestion (dynamic volatility)
+## Data ingestion
 
-- Read-only sources under `../shared_data/`:
-  - `sample_master_registration_data.xlsx`
-  - `sample_transaction_supply_data.xlsx`
-- Resolve paths from configuration constants or PM-provided overrides; never hardcode row counts, column names, or mock metrics.
-- On each load: infer schema, keys, null rates, and distributions; design adapters to survive production volume and column drift per `shared_data/DATA_LAYER.md`.
-- **Guards:** Drop columns with >50% missing (document in Slack summary); flag 20–50% missing as quality indicators.
+- Read-only: `shared_data/sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
+- Follow `data_schema_blueprint.md`; never hardcode row counts, columns, or mock metrics
 
 ## Communication
 
-- Import `AgentSlacker` from `shared_utils.slacker` only; no custom Slack clients.
-- **Agent channel:** `SLACK_WEBHOOK_URL` (local `.env`)
-- **Global board:** `SLACK_GENERAL_WEBHOOK_URL` (root `.env`, `#general-pm-board`) via `broadcast_global_sync` or `broadcast_global=True` when findings are systemic.
-- PM never replies via Slack to control code; Composer is the sole command interface.
+- `AgentSlacker` only; Composer is the sole command interface
 
 ## Phase-gate state machine
 
-### Phase 1 — Autonomous EDA (ACTIVE)
-
-- Profile schema, candidate keys, missingness, distributions, and relational candidates.
-- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
-
-### Phase 2 — Hypothesis & model selection (LOCKED)
-
-- Propose unsupervised strategy aligned to inferred layout; counter-argue via `escalate_roadblock` if PM assumptions are invalidated.
-- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
-
-### Phase 3 — Streamlit MVP (LOCKED)
-
-- Build pipeline/UI within folder limits after PM approval.
-- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` with hosting context → **HALT**
-
-### Phase 4 — Feedback-driven refactoring (LOCKED)
-
-- Incremental changes per PM rules; preserve architecture.
+| Phase | Status | Exit |
+|-------|--------|------|
+| 1 EDA | **ACTIVE** | Slack notify + `PROGRESS.md` → HALT |
+| 2 Strategy | LOCKED | Slack notify → HALT |
+| 3 MVP | LOCKED | Slack notify → HALT |
+| 4 Refactor | LOCKED | Incremental per PM |
 
 ## Roadblock policy
 
-Use `escalate_roadblock` when join keys cannot be inferred, quality rules eliminate the analytical target, or graph structure is degenerate without an approved fallback. Set `broadcast_global=True` if the block affects other agents.
+`escalate_roadblock` when joins, quality rules, or graph structure block progress; `broadcast_global=True` if systemic.

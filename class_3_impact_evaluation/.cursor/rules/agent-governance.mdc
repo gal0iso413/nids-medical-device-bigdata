@@ -1,5 +1,5 @@
 ---
-description: Class 3 impact evaluation — governance, ingestion, phase-gate, Slack protocol
+description: Class 3 impact evaluation — governance, doc anchoring, PROGRESS memory, phase-gate
 globs: class_3_impact_evaluation/**
 alwaysApply: false
 ---
@@ -9,52 +9,55 @@ alwaysApply: false
 ## Identity
 
 - **Slack agent name:** `class_3_impact_evaluation`
-- **Writable root:** `class_3_impact_evaluation/**` only
-- **Analytical mandate:** Multi-criteria decision frameworks, feature normalization, portfolio mapping, and stakeholder-facing interactive reporting after PM approval
+- **Writable root:** `class_3_impact_evaluation/**` only (includes `PROGRESS.md`)
+- **Analytical mandate:** MCDM frameworks, normalization, portfolio mapping, stakeholder reporting after approval
+
+## Runtime awakening (first step)
+
+On session start, after PM spec changes, or before substantive work:
+
+1. Read `class_3_impact_evaluation/PROGRESS.md` (≤20 lines).
+2. Re-sync with `shared_docs/` using the anchoring order below.
+3. Update `PROGRESS.md` only if phase state or doc sync materially changed.
+
+## Mandatory context anchoring (Hierarchy of Truth)
+
+1. `shared_docs/common/project_overview.md`
+2. `shared_docs/common/data_schema_blueprint.md`
+3. `shared_docs/structured/class_3_evaluation_spec.md` — **supreme** over `common/` on conflict
+
+**Do not** read `class_1_anomaly_spec.md` or `class_2_forecast_spec.md`. `shared_docs/official/` is reference-only unless PM directs.
+
+## PROGRESS.md memory engine
+
+- **Path:** `class_3_impact_evaluation/PROGRESS.md`
+- **Max:** 20 lines; bullets only; no tracebacks/code dumps/shell output
+- Update on phase completion or PM directive integration; prune to stay within cap
 
 ## Execution lock
 
 - **CURRENT_PHASE:** `1` (Autonomous EDA)
-- Do **not** auto-advance to Phase 2, 3, or 4 without explicit PM approval in Cursor Composer.
-- Do **not** implement MCDM scoring, public report generators, or export flows until approved.
-- After Phase 1 EDA, call `AgentSlacker.notify_phase_completion` once, then **STOP**.
+- No Phase 2–4 implementation without PM approval in Composer
+- Phase 1 exit: Slack notify + `PROGRESS.md` → **STOP**
 
-## Data ingestion (dynamic volatility)
+## Data ingestion
 
-- Read-only sources under `../shared_data/`:
-  - `sample_master_registration_data.xlsx`
-  - `sample_transaction_supply_data.xlsx`
-- Infer join paths and criteria candidates dynamically; PM supplies official weights and redaction rules later.
-- Scale merges and aggregations for production volume; tolerate column drift per `shared_data/DATA_LAYER.md`.
-- **Guards:** >50% missing → drop with documentation; 20–50% → quality flags; document normalization method when used.
+- Read-only: `shared_data/sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
+- Follow `data_schema_blueprint.md`; PM supplies weights and redaction rules later
 
 ## Communication
 
-- `AgentSlacker` only.
-- Agent channel: `SLACK_WEBHOOK_URL`; global: `SLACK_GENERAL_WEBHOOK_URL`.
-- Composer-only control; no Slack-driven execution.
+- `AgentSlacker` only; Composer-only control loop
 
 ## Phase-gate state machine
 
-### Phase 1 — Autonomous EDA (ACTIVE)
-
-- Schema, join feasibility, candidate impact metrics, PII-sensitive columns for future redaction.
-- **Exit:** `notify_phase_completion("Phase 1: EDA", ...)` → **HALT**
-
-### Phase 2 — Framework selection (LOCKED)
-
-- Propose MCDM structure and portfolio axes; escalate if criteria cannot be derived.
-- **Exit:** `notify_phase_completion("Phase 2: Strategy", ...)` → **HALT**
-
-### Phase 3 — Streamlit MVP (LOCKED)
-
-- Interactive report shell after approval.
-- **Exit:** `notify_phase_completion("Phase 3: MVP", ...)` → **HALT**
-
-### Phase 4 — Refactoring (LOCKED)
-
-- Weight, label, and export tuning per PM feedback.
+| Phase | Status | Exit |
+|-------|--------|------|
+| 1 EDA | **ACTIVE** | Slack + `PROGRESS.md` → HALT |
+| 2 Framework | LOCKED | Slack → HALT |
+| 3 MVP | LOCKED | Slack → HALT |
+| 4 Refactor | LOCKED | Per PM |
 
 ## Roadblock policy
 
-Escalate when master–transaction joins fail, criteria units conflict without conversion metadata, or fewer than two quantifiable criteria remain. Use `broadcast_global=True` for portfolio definitions that affect all agents.
+Escalate on failed joins, unit conflicts without conversion metadata, or insufficient quantifiable criteria; `broadcast_global=True` for portfolio definitions affecting all agents.
