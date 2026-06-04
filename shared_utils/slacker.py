@@ -3,7 +3,7 @@ import os
 
 import requests
 
-GENERAL_CHANNEL_NAME = "#general-pm-board"
+GENERAL_CHANNEL_NAME = "#overall_project"
 
 
 class AgentSlacker:
