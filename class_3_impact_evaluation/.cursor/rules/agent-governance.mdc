@@ -22,11 +22,11 @@ On session start, after PM spec changes, or before substantive work:
 
 ## Mandatory context anchoring (Hierarchy of Truth)
 
-1. `shared_docs/common/project_overview.md`
-2. `shared_docs/common/data_schema_blueprint.md`
-3. `shared_docs/structured/class_3_evaluation_spec.md` — **supreme** over `common/` on conflict
+1. `shared_data/DATA_LAYER.md` — paths, ingestion, guardrails
+2. `shared_docs/official/description_master_registration.md` and `description_transaction_supply.md` — column semantics
+3. `shared_docs/structured/class_3_evaluation_spec.md` — **supreme** for Agent 3 mandate on conflict
 
-**Do not** read `class_1_anomaly_spec.md` or `class_2_forecast_spec.md`. `shared_docs/official/` is reference-only unless PM directs.
+**Do not** read `class_1_anomaly_spec.md` or `class_2_forecast_spec.md`. Read `official/medical_device_bigdata_spec.md` only when PM directs.
 
 ## PROGRESS.md memory engine
 
@@ -43,7 +43,7 @@ On session start, after PM spec changes, or before substantive work:
 ## Data ingestion
 
 - Read-only: `shared_data/sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
-- Follow `data_schema_blueprint.md`; PM supplies weights and redaction rules later
+- Follow `DATA_LAYER.md` and official field dictionaries; PM supplies weights and redaction rules later
 
 ## Communication
 

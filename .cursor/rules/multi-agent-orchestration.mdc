@@ -10,7 +10,7 @@ alwaysApply: true
 | Path | Access |
 |------|--------|
 | `shared_data/` | Read-only — transactional datasets |
-| `shared_docs/` | Read-only — domain docs (`official/`, `structured/`, `common/`) |
+| `shared_docs/` | Read-only — domain docs (`official/`, `structured/`) |
 | `shared_utils/` | Immutable; import `AgentSlacker` only |
 | `class_1_anomaly_detection/` | Agent 1 writable root (+ `PROGRESS.md`) |
 | `class_2_supply_forecast/` | Agent 2 writable root (+ `PROGRESS.md`) |
@@ -22,16 +22,17 @@ Agents must not modify files outside their designated folder. `shared_docs/` is 
 
 | Tier | Purpose |
 |------|---------|
-| `common/` | Universal context for all agents |
-| `structured/` | Per-agent specifications (override `common/` on conflict) |
-| `official/` | Immutable stakeholder logs (reference material) |
+| `official/` | Program RFP and field dictionaries (stakeholder source) |
+| `structured/` | Per-agent specifications (supreme for that agent on conflict) |
+
+Data paths and ingestion: `shared_data/DATA_LAYER.md` only.
 
 Agents follow **Hierarchy of Truth** and context anchoring defined in each `class_*/.cursor/rules/agent-governance.mdc`.
 
 ## Data layer (`shared_data/`)
 
 - **Sample tier:** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
-- **Ingestion rules:** `shared_docs/common/data_schema_blueprint.md` + `shared_data/DATA_LAYER.md`
+- **Ingestion rules:** `shared_data/DATA_LAYER.md` + `shared_docs/official/description_*.md`
 - **Dynamic volatility:** Runtime discovery, profiling, scale, and drift tolerance — no hardcoded schemas in code.
 
 ## Communication (`shared_utils/slacker.py`)

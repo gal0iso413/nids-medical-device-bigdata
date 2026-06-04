@@ -6,14 +6,15 @@ Segregates domain knowledge from transactional data (`shared_data/`). Agents may
 
 | Tier | Path | Purpose |
 |------|------|---------|
-| **official** | `official/` | Immutable stakeholder governance logs (raw) |
-| **structured** | `structured/` | PM-modularized agent specifications |
-| **common** | `common/` | Universal context for all agents |
+| **official** | `official/` | Stakeholder specifications: program RFP, master/supply field dictionaries |
+| **structured** | `structured/` | Per-agent analytical mandates (제안서 / 착수보고서 bodies) |
+
+Data ingestion and file paths live in `shared_data/DATA_LAYER.md` (not in this tree).
 
 ## Hierarchy of truth
 
-1. `common/` — universal baseline
-2. `structured/class_X_*_spec.md` — overrides `common/` for that agent when in conflict
-3. `official/` — stakeholder source material; does not override structured specs without PM reconciliation
+1. `shared_data/DATA_LAYER.md` — canonical paths, dynamic ingestion, guardrails
+2. `official/` — column semantics and regulatory definitions
+3. `structured/class_X_*_spec.md` — **supreme** for that agent’s scope when in conflict with official interpretations
 
-Agents load context per `.cursor/rules` anchoring protocol.
+Agents load context per `class_*/.cursor/rules/agent-governance.mdc`. Do not cross-read peer structured specs.

@@ -5,8 +5,9 @@
 ## Current state
 
 - **Phase:** 1 (Autonomous EDA — locked)
-- **Last doc sync:** not yet performed
+- **Last doc sync:** structured spec + official dictionaries + `DATA_LAYER.md`
 
 ## Recent shifts
 
-- Environment initialized; awaiting PM population of `shared_docs/`
+- Real sample Excel in `shared_data/` (~510 master / ~12.5k supply rows)
+- Doc tier consolidated: removed `common/` placeholders; ingestion in `DATA_LAYER.md`
