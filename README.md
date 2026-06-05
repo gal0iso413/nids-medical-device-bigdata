@@ -13,8 +13,13 @@ Three isolated agents share read-only Excel inputs and the immutable Slack bridg
 | `class_2_supply_forecast/` | Agent 2 — time-series & early warning |
 | `class_3_impact_evaluation/` | Agent 3 — MCDM & portfolio reporting |
 | `.cursor/rules/` | Workspace governance (MDC) |
+| `.hermes/skills/` | Hermes Agent skills (mirrors MDC; see `.hermes/README.md`) |
 
 Per-agent governance lives in `class_*/.cursor/rules/agent-governance.mdc`. Each agent maintains a compact `PROGRESS.md` (≤20 lines).
+
+## Hermes Agent
+
+Skills under `.hermes/skills/nids/` port workspace and per-agent rules for Hermes (Cursor uses `.cursor/rules/`). Register the repo path once in WSL `~/.hermes/config.yaml` — see [.hermes/README.md](.hermes/README.md).
 
 ## Documentation (`shared_docs/`)
 
