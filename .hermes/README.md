@@ -1,6 +1,6 @@
-# Hermes skills (NIDS)
+# Hermes roles (NIDS)
 
-Version-controlled skills for [Hermes Agent](https://hermes-agent.nousresearch.com/) — mirrors `.cursor/rules/` governance without duplicating `shared_docs/`.
+Three **background specialist roles** for [Hermes Agent](https://hermes-agent.nousresearch.com/). Governance and implementation stay in **Cursor** (`.cursor/rules/`). Hermes handles bounded, long, or unattended work and posts deliverables to Slack.
 
 ## One-time WSL setup
 
@@ -12,42 +12,57 @@ skills:
     - /mnt/c/Users/wq240/Documents/Projects/NIDS/cursor/.hermes/skills
 ```
 
-Restart or start a new `hermes chat` session. Verify with `skills_list` or `/nids-workspace`.
+Restart or start a new `hermes chat` session. Verify with `skills_list` or `/nids-methods-researcher`.
 
-## Skill index
+## Role index
 
-| Skill | Slash command | Use when |
-|-------|---------------|----------|
-| `nids-workspace` | `/nids-workspace` | Every NIDS session (isolation, PM protocol) |
-| `nids-data-ingestion` | `/nids-data-ingestion` | Loading or profiling Excel sample tier |
-| `nids-doc-routing` | `/nids-doc-routing` | Choosing which docs to read |
-| `nids-class-1` | `/nids-class-1` | Class 1 anomaly detection agent |
-| `nids-class-2` | `/nids-class-2` | Class 2 supply forecast agent |
-| `nids-class-3` | `/nids-class-3` | Class 3 impact evaluation agent |
-| `nids-phase-1-eda` | `/nids-phase-1-eda` | Phase 1 discovery task (all agents) |
+| Skill | Slash command | Output folder | Purpose |
+|-------|---------------|---------------|---------|
+| `nids-methods-researcher` | `/nids-methods-researcher` | `class_*/research/` | Literature & methods briefs |
+| `nids-data-profiler` | `/nids-data-profiler` | `class_*/notes/` | Excel profiling & dictionary alignment |
+| `nids-spec-auditor` | `/nids-spec-auditor` | `class_*/notes/` | Read-only spec vs data vs code audit |
 
-## Typical Class 1 session
+Report templates: `.hermes/templates/`
+
+## Typical session
 
 ```bash
 cd /mnt/c/Users/wq240/Documents/Projects/NIDS/cursor/class_1_anomaly_detection
 hermes chat
 ```
 
-First message (short):
+First message (one role, one class, one deliverable):
 
 ```text
-Apply nids-workspace, nids-class-1, nids-phase-1-eda.
-Task: Phase 1 discovery — summary only until I say proceed.
+Apply nids-methods-researcher.
+Class: class_1_anomaly_detection.
+Task: Compare PDI + betweenness + HHI vs graph outlier methods for indirect supply detection.
+Constraints: ~12.5k supply rows, interpretable for regulators.
+Write: class_1_anomaly_detection/research/2025-06-network-methods.md
+Then notify Slack and HALT.
 ```
 
-Load **one** class skill per session. Do not combine `nids-class-2` or `nids-class-3` with Class 1.
+## Slack notification (required)
+
+Each role finishes by running from repo root:
+
+```bash
+source .venv/bin/activate
+python scripts/notify_hermes_deliverable.py \
+  --agent class_1_anomaly_detection \
+  --role methods-researcher \
+  --path class_1_anomaly_detection/research/2025-06-network-methods.md \
+  --summary "Short summary for the channel."
+```
+
+Webhooks: `SLACK_WEBHOOK_URL` in `class_*/.env`; optional `SLACK_GENERAL_WEBHOOK_URL` in root `.env`.
 
 ## Cursor vs Hermes
 
 | Cursor | Hermes |
 |--------|--------|
-| `.cursor/rules/multi-agent-orchestration.mdc` | `nids-workspace` |
-| `class_*/.cursor/rules/agent-governance.mdc` | `nids-class-*` |
-| Composer context | Skills + tool reads of `shared_docs/` |
+| PM commands, phase gates, code + diffs | Background research, profiling, audits |
+| `.cursor/rules/` governance | Three role skills only |
+| Interactive review | Deliverable markdown + Slack record |
 
-Specs stay in `shared_docs/`; skills point to paths, they do not copy dictionary content.
+Do **not** load multiple Hermes roles in one session. Do **not** recreate per-phase governance skills.

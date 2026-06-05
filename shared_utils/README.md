@@ -12,8 +12,11 @@ Mandatory outbound Slack bridge. Agents must not fork or edit this module.
 ### API surface
 
 - `notify_phase_completion(..., broadcast_global=False)` — agent channel; optional global mirror
+- `notify_hermes_deliverable(role, deliverable_path, summary, ...)` — Hermes role report saved on disk
 - `escalate_roadblock(..., broadcast_global=False)` — agent channel; optional global mirror
 - `broadcast_global_sync(subject, message)` — global channel only (cross-agent sync)
+
+Hermes roles invoke `scripts/notify_hermes_deliverable.py` after writing a report. Roles: `methods-researcher`, `data-profiler`, `spec-auditor`.
 
 ### Control loop (PM decision)
 
