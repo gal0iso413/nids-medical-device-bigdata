@@ -11,3 +11,4 @@
 
 - Real sample Excel in `shared_data/` (~12.5k supply rows)
 - Doc tier consolidated: removed `common/` placeholders; ingestion in `DATA_LAYER.md`
+- Material schema shift: Master/Supply are 100% disjoint in sample tier; 3 undocumented Supply columns found.
