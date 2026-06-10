@@ -7,7 +7,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 .DS_Store
-.xlsx
+shared_data/*.xlsx
 
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
