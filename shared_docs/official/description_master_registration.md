@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative field specification (converted from NIDS/MFDS integrated-registration data dictionary).
 > **Edit policy:** PM-maintained official log; agents **read-only**. Do not modify.
-> **Companion data:** `shared_data/sample_master_registration_data.xlsx` (sample tier; profile at runtime).
+> **Companion data:** `shared_data/sample_master_registration_data.xlsx` (sample tier); `shared_data/top7_master_registration_data.xlsx` (modeling tier; profile at runtime).
 > **Related official doc:** `description_transaction_supply.md` (supply rows link via UDI-DI / item / model serial numbers).
 
 ## Purpose of this document
@@ -14,6 +14,7 @@ Defines every column in **medical device integrated information registration dat
 | Artifact | Role |
 |----------|------|
 | `sample_master_registration_data.xlsx` | Executable sample rows for all agents (product/company dimension) |
+| `top7_master_registration_data.xlsx` | Modeling-tier master rows (7 licenses) |
 | This file | Semantic authority for column labels, keys, and input rules — not a fixed runtime schema |
 
 Agents must follow **dynamic ingestion** in `shared_data/DATA_LAYER.md`: discover columns, profile dtypes/nulls, and adapt to drift; treat the table below as reference, not hardcoded code constants.
