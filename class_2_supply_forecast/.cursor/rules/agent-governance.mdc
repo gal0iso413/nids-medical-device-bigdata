@@ -42,8 +42,7 @@ On session start, after PM spec changes, or before substantive work:
 
 ## Data ingestion
 
-- Read-only: `shared_data/sample_*` (bootstrap); `shared_data/top7_*` (modeling default)
-- Supply primary: `top7_transaction_supply_data.xlsx` sheet `공급내역 실제자료` only — not sheet 1 `표지` (개요); master when join context required
+- Read-only: `shared_data/sample_transaction_supply_data.xlsx` (primary); master file when join context required
 - Follow `DATA_LAYER.md` and official field dictionaries; dynamic discovery only
 
 ## Communication

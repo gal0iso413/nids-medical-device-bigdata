@@ -46,8 +46,7 @@ Load and blend **in this order**:
 
 ## Data ingestion
 
-- Read-only: `shared_data/sample_*` (bootstrap); `shared_data/top7_*` (modeling default)
-- Supply: for `top7_transaction_supply_data.xlsx`, load sheet `공급내역 실제자료` only — not sheet 1 `표지` (개요)
+- Read-only: `shared_data/sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
 - Follow `DATA_LAYER.md` and official field dictionaries; never hardcode row counts or column lists
 
 ## Communication
