@@ -7,3 +7,14 @@ venv/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+shared_data/*.xlsx
+
+# Hermes role deliverables (local / ephemeral; not versioned)
+class_*/research/*
+!class_*/research/.gitkeep
+class_*/notes/*
+!class_*/notes/.gitkeep
+
+# Progess files
+PROGRESS.md
+

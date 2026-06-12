@@ -32,6 +32,7 @@ Agents follow **Hierarchy of Truth** and context anchoring defined in each `clas
 ## Data layer (`shared_data/`)
 
 - **Sample tier:** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
+- **Modeling tier (top7):** `top7_master_registration_data.xlsx`, `top7_transaction_supply_data.xlsx` (supply: sheet 2 `공급내역 실제자료` only)
 - **Ingestion rules:** `shared_data/DATA_LAYER.md` + `shared_docs/official/description_*.md`
 - **Dynamic volatility:** Runtime discovery, profiling, scale, and drift tolerance — no hardcoded schemas in code.
 
@@ -40,6 +41,17 @@ Agents follow **Hierarchy of Truth** and context anchoring defined in each `clas
 - **Agent channel:** `SLACK_WEBHOOK_URL` in each agent `.env`
 - **Global board:** `SLACK_GENERAL_WEBHOOK_URL` in root `.env` → `#general-pm-board`
 - Slack is **outbound-only**; PM commands in **Cursor Composer** only.
+- **Hermes deliverables:** background roles post via `scripts/notify_hermes_deliverable.py` → `notify_hermes_deliverable()`; reports live under `class_*/research/` or `class_*/notes/` (see `.hermes/README.md`).
+
+## Hermes (background roles only)
+
+| Role | Output | Cursor handoff |
+|------|--------|----------------|
+| Methods researcher | `class_*/research/*.md` | PM reviews memo → implements in Composer |
+| Data profiler | `class_*/notes/eda_profile_*.md` | PM reviews → EDA scripts in Composer |
+| Spec auditor | `class_*/notes/spec_audit_*.md` | PM resolves gaps in Composer |
+
+Governance stays in `.cursor/rules/`; do not duplicate in `.hermes/skills/`.
 
 ## Active phase (workspace default)
 

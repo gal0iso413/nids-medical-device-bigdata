@@ -6,15 +6,20 @@ Three isolated agents share read-only Excel inputs and the immutable Slack bridg
 
 | Path | Role |
 |------|------|
-| `shared_data/` | Read-only datasets (`sample_*`); see `DATA_LAYER.md` |
+| `shared_data/` | Read-only datasets (`sample_*`, `top7_*`); see `DATA_LAYER.md` |
 | `shared_docs/` | Read-only docs (`official/`, `structured/`) |
 | `shared_utils/` | Immutable `AgentSlacker` (agent + `#general-pm-board`) |
 | `class_1_anomaly_detection/` | Agent 1 — distribution & graph anomalies |
 | `class_2_supply_forecast/` | Agent 2 — time-series & early warning |
 | `class_3_impact_evaluation/` | Agent 3 — MCDM & portfolio reporting |
 | `.cursor/rules/` | Workspace governance (MDC) |
+| `.hermes/skills/` | Hermes background roles (research, profiler, auditor; see `.hermes/README.md`) |
 
 Per-agent governance lives in `class_*/.cursor/rules/agent-governance.mdc`. Each agent maintains a compact `PROGRESS.md` (≤20 lines).
+
+## Hermes Agent (background roles)
+
+Three specialist roles for long or unattended work: methods research, data profiling, spec audit. Each writes a markdown deliverable and notifies Slack. Implementation and phase gates remain in **Cursor Composer**. Register skills once in WSL `~/.hermes/config.yaml` — see [.hermes/README.md](.hermes/README.md).
 
 ## Documentation (`shared_docs/`)
 
@@ -22,10 +27,17 @@ See `shared_docs/README.md`. Agents anchor: `shared_data/DATA_LAYER.md` → `off
 
 ## Data files
 
+**Sample tier** (bootstrap EDA):
+
 - `shared_data/sample_master_registration_data.xlsx` (~510 × 93)
 - `shared_data/sample_transaction_supply_data.xlsx` (~12.5k × 74)
 
-See `shared_data/DATA_LAYER.md` for ingestion rules and production swap policy.
+**Modeling tier (top7)** — next step after sample; default for model work:
+
+- `shared_data/top7_master_registration_data.xlsx` (~221 × 93)
+- `shared_data/top7_transaction_supply_data.xlsx` — sheet 1 `표지` (개요/metadata); **sheet 2 `공급내역 실제자료`** (~704k × 71)
+
+See `shared_data/DATA_LAYER.md` for sheet rules and production swap policy.
 
 ## Environment
 

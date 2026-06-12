@@ -102,6 +102,47 @@ class AgentSlacker:
             }
             self._post(self.general_webhook_url, global_payload)
 
+    HERMES_ROLE_LABELS: dict[str, str] = {
+        "methods-researcher": "Methods & Literature Researcher",
+        "data-profiler": "Data & Schema Profiler",
+        "spec-auditor": "Cross-doc Compliance Auditor",
+    }
+
+    def notify_hermes_deliverable(
+        self,
+        role: str,
+        deliverable_path: str,
+        summary: str,
+        *,
+        broadcast_global: bool = False,
+    ) -> None:
+        """
+        Hermes background role finished a bounded deliverable (report on disk).
+        Posts to the agent channel; optional mirror to the global PM board.
+        """
+        role_label = self.HERMES_ROLE_LABELS.get(role, role)
+        payload = {
+            "text": f"📄 *[HERMES DELIVERABLE]* `{self.agent_name}` — {role_label}",
+            "attachments": [
+                {
+                    "color": "#6B5B95",
+                    "fields": [
+                        {"title": "Role", "value": role_label, "short": True},
+                        {"title": "Deliverable", "value": deliverable_path, "short": True},
+                        {"title": "Summary", "value": summary, "short": False},
+                    ],
+                    "footer": "Artifact saved in repo. PM reviews in Cursor Composer (not Slack).",
+                }
+            ],
+        }
+        self._post(self.agent_webhook_url, payload)
+        if broadcast_global:
+            global_payload = {
+                "text": f"📄 *[HERMES DELIVERABLE]* `{self.agent_name}` → {GENERAL_CHANNEL_NAME}",
+                "attachments": payload["attachments"],
+            }
+            self._post(self.general_webhook_url, global_payload)
+
     def broadcast_global_sync(self, subject: str, message: str) -> None:
         """
         Central orchestration channel for cross-agent synchronization:
