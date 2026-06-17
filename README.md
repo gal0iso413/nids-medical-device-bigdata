@@ -27,17 +27,17 @@ See `shared_docs/README.md`. Agents anchor: `shared_data/DATA_LAYER.md` → `off
 
 ## Data files
 
-**Sample tier** (bootstrap EDA):
-
-- `shared_data/sample_master_registration_data.xlsx` (~510 × 93)
-- `shared_data/sample_transaction_supply_data.xlsx` (~12.5k × 74)
-
-**Modeling tier (top7)** — next step after sample; default for model work:
+**Active tier (top7)** — sole data source for all agents:
 
 - `shared_data/top7_master_registration_data.xlsx` (~221 × 93)
-- `shared_data/top7_transaction_supply_data.xlsx` — sheet 1 `표지` (개요/metadata); **sheet 2 `공급내역 실제자료`** (~704k × 71)
+- `shared_data/top7_transaction_supply_data.xlsx` — sheet 1 `표지` (개요/metadata, skip); **data sheet** (~704k × 71) — discover by content, do not hardcode sheet name
 
-See `shared_data/DATA_LAYER.md` for sheet rules and production swap policy.
+**Archived tier (sample)** — do not use in code:
+
+- `shared_data/sample_master_registration_data.xlsx` — retained for Hermes audit history only
+- `shared_data/sample_transaction_supply_data.xlsx` — retained for Hermes audit history only; 0% master/supply join overlap
+
+See `shared_data/DATA_LAYER.md` for ingestion rules.
 
 ## Environment
 

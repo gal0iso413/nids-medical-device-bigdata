@@ -31,8 +31,8 @@ Agents follow **Hierarchy of Truth** and context anchoring defined in each `clas
 
 ## Data layer (`shared_data/`)
 
-- **Sample tier:** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
-- **Modeling tier (top7):** `top7_master_registration_data.xlsx`, `top7_transaction_supply_data.xlsx` (supply: sheet 2 `공급내역 실제자료` only)
+- **Active tier (top7):** `top7_master_registration_data.xlsx`, `top7_transaction_supply_data.xlsx` (supply: data sheet only — content-based discovery, not hardcoded name)
+- **Archived tier (sample):** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx` — **do not load**; retained for Hermes audit history only
 - **Ingestion rules:** `shared_data/DATA_LAYER.md` + `shared_docs/official/description_*.md`
 - **Dynamic volatility:** Runtime discovery, profiling, scale, and drift tolerance — no hardcoded schemas in code.
 

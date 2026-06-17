@@ -8,6 +8,7 @@ venv/
 .pytest_cache/
 .DS_Store
 shared_data/*.xlsx
+*.csv
 
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*

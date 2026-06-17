@@ -42,7 +42,8 @@ On session start, after PM spec changes, or before substantive work:
 
 ## Data ingestion
 
-- Read-only: `shared_data/sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx`
+- Read-only: `shared_data/top7_master_registration_data.xlsx`, `top7_transaction_supply_data.xlsx` (data sheet — content-based discovery)
+- **Do not** load `sample_*` workbooks in any code path
 - Follow `DATA_LAYER.md` and official field dictionaries; PM supplies weights and redaction rules later
 
 ## Communication

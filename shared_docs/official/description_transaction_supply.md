@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative field specification (converted from NIDS/MFDS supply-details data dictionary).
 > **Edit policy:** PM-maintained official log; agents **read-only**. Do not modify.
-> **Companion data:** `shared_data/sample_transaction_supply_data.xlsx` (sample tier); `shared_data/top7_transaction_supply_data.xlsx` (modeling tier — sheet 2 `공급내역 실제자료` only; sheet 1 `표지`/개요 is metadata).
+> **Companion data:** `shared_data/top7_transaction_supply_data.xlsx` (active tier — data sheet only; sheet 1 `표지`/개요 is metadata; use content-based sheet discovery). `sample_transaction_supply_data.xlsx` is archived; do not load.
 > **Related official doc:** `description_master_registration.md` (join via UDI-DI / item / model serial numbers).
 
 ## Purpose of this document
@@ -13,8 +13,8 @@ Defines every column in **medical device supply details report data** (공급내
 
 | Artifact | Role |
 |----------|------|
-| `sample_transaction_supply_data.xlsx` | Executable sample rows for Agent 1 (anomaly) and Agent 2 (forecast) |
-| `top7_transaction_supply_data.xlsx` | Modeling-tier supply rows (7 licenses); ingest sheet 2 `공급내역 실제자료` only |
+| `top7_transaction_supply_data.xlsx` | Active-tier supply rows (7 licenses) — sole source for all agents; ingest data sheet only (content-based discovery) |
+| `sample_transaction_supply_data.xlsx` | **Archived** — Hermes audit trail only; do not load |
 | This file | Semantic authority for column labels, keys, and business rules — not a fixed runtime schema |
 
 Agents must follow **dynamic ingestion** in `shared_data/DATA_LAYER.md`: discover columns, profile dtypes/nulls, and adapt to drift; treat the table below as reference, not hardcoded code constants.

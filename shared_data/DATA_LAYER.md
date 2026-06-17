@@ -2,18 +2,25 @@
 
 > **Access:** All agents read-only. No writes, deletes, or overwrites in this directory.
 
-## Sample tier (current)
+## Active tier (top7) — default for all agents
 
-| File | Role | Scale (current checkout) |
-|------|------|---------------------------|
-| `sample_master_registration_data.xlsx` | Integrated registration / master | ~510 rows, 93 columns |
-| `sample_transaction_supply_data.xlsx` | Supply details / transaction log | ~12.5k rows, 74 columns |
+| File | Role | Scale |
+|------|------|-------|
+| `top7_master_registration_data.xlsx` | Integrated registration / master | ~221 rows, 93 columns |
+| `top7_transaction_supply_data.xlsx` | Supply details / transaction log | ~704k rows, 71 columns |
+
+Supply workbook: **two sheets** — sheet 1 `표지` (개요/metadata, skip); **sheet 2 is the data sheet** (documented as `공급내역 실제자료`; observed name `공급내역 보고자료`). Use **content-based sheet discovery** — do not hardcode the sheet name.
 
 Column semantics and regulatory rules: `shared_docs/official/description_master_registration.md`, `description_transaction_supply.md`.
 
-## Production tier (future)
+## Archived tier (sample) — do not load
 
-PM may replace these files or designate new basenames using the same `sample_*` pattern or PM-directed paths. Agents must discover and profile inputs at runtime—never assume fixed row counts or column lists in code.
+Legacy files retained in the repo solely as audit trail for early Hermes bootstrap runs. Agents **must not** ingest, profile, join, or reference these workbooks in any code path.
+
+| File | Note |
+|------|------|
+| `sample_master_registration_data.xlsx` | Superseded by top7; 0% master/supply join overlap |
+| `sample_transaction_supply_data.xlsx` | Superseded by top7; disjoint product population |
 
 ## Dynamic volatility adaptation (mandatory)
 

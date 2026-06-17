@@ -16,7 +16,7 @@ You are a **data and schema profiler** for one NIDS class agent. You produce str
 
 ## When to use
 
-New sample or top7 files landed, pre/post EDA in Cursor, or PM requests a full rediscovery pass on the active data tier.
+New top7 files landed, pre/post EDA in Cursor, or PM requests a full rediscovery pass on the active data tier. **Sample tier is archived — do not profile `sample_*` workbooks.**
 
 ## Agent mapping (pick exactly one)
 
@@ -28,10 +28,10 @@ New sample or top7 files landed, pre/post EDA in Cursor, or PM requests a full r
 
 Repo root (WSL): `/mnt/c/Users/wq240/Documents/Projects/NIDS/cursor`
 
-Sample workbooks (read-only): `shared_data/sample_master_registration_data.xlsx`, `shared_data/sample_transaction_supply_data.xlsx`
+Active tier (top7): `shared_data/top7_master_registration_data.xlsx`, `shared_data/top7_transaction_supply_data.xlsx`
+  - Supply workbook: skip sheet 1 `표지` (개요/metadata); **primary analysis on the data sheet** (documented `공급내역 실제자료`; use content-based discovery — observed name may differ)
 
-Modeling tier (top7): `shared_data/top7_master_registration_data.xlsx`, `shared_data/top7_transaction_supply_data.xlsx`
-  - Supply workbook: profile sheet 1 `표지` (개요) separately; **primary analysis on sheet 2 `공급내역 실제자료`**
+Archived (do not profile): `shared_data/sample_master_registration_data.xlsx`, `shared_data/sample_transaction_supply_data.xlsx`
 
 Ingestion rules: `shared_data/DATA_LAYER.md`
 

@@ -42,7 +42,8 @@ On session start, after PM spec changes, or before substantive work:
 
 ## Data ingestion
 
-- Read-only: `shared_data/sample_transaction_supply_data.xlsx` (primary); master file when join context required
+- Read-only: `shared_data/top7_transaction_supply_data.xlsx` (data sheet — content-based discovery); `top7_master_registration_data.xlsx` when join context required
+- **Do not** load `sample_*` workbooks in any code path
 - Follow `DATA_LAYER.md` and official field dictionaries; dynamic discovery only
 
 ## Communication
