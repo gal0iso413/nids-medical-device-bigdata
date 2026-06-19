@@ -24,7 +24,8 @@ On session start, after PM spec changes, or before substantive work:
 
 1. `shared_data/DATA_LAYER.md` — paths, ingestion, guardrails
 2. `shared_docs/official/description_master_registration.md` and `description_transaction_supply.md` — column semantics
-3. `shared_docs/structured/class_3_evaluation_spec.md` — **supreme** for Agent 3 mandate on conflict
+3. `shared_docs/structured/onsite_visit1_summary.md` — production calibration (Visit 1)
+4. `shared_docs/structured/class_3_evaluation_spec.md` — **supreme** for Agent 3 mandate on conflict
 
 **Do not** read `class_1_anomaly_spec.md` or `class_2_forecast_spec.md`. Read `official/medical_device_bigdata_spec.md` only when PM directs.
 

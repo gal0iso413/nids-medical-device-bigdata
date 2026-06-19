@@ -6,8 +6,8 @@
 
 | File | Role | Scale |
 |------|------|-------|
-| `top7_master_registration_data.xlsx` | Integrated registration / master | ~221 rows, 93 columns |
-| `top7_transaction_supply_data.xlsx` | Supply details / transaction log | ~704k rows, 71 columns |
+| `top7_master_registration_data.xlsx` | Integrated registration / master | ~221 rows, 93 columns (production: ~2.6M rows confirmed onsite 2026-06-18) |
+| `top7_transaction_supply_data.xlsx` | Supply details / transaction log | ~704k rows, 71 columns (production: up to ~12M rows / 4-month window; full history 2020-08–2026-04) |
 
 Supply workbook: **two sheets** — sheet 1 `표지` (개요/metadata, skip); **sheet 2 is the data sheet** (documented as `공급내역 실제자료`; observed name `공급내역 보고자료`). Use **content-based sheet discovery** — do not hardcode the sheet name.
 
@@ -37,10 +37,15 @@ Ingestion pipelines must:
 - Drop columns with **>50%** missing only during EDA/modeling per agent governance; flag **20–50%** as quality indicators.
 - Join keys between master and supply follow official dictionaries (item / model / UDI-DI serial numbers).
 
+## Production calibration (Visit 1)
+
+Onsite validation against NIDS production data (2026-06-18): 3-key join **99.97%**, 0 FAIL. Aggregates and flags: `shared_docs/structured/onsite_visit1_summary.md`. Per-agent profiles: `class_*/notes/eda_profile_onsite_2026-06-18.md`.
+
 ## Related documentation
 
 | Topic | Path |
 |-------|------|
 | Agent mandate | `shared_docs/structured/class_*_*_spec.md` |
+| Onsite production calibration | `shared_docs/structured/onsite_visit1_summary.md` |
 | Program / RFP context | `shared_docs/official/medical_device_bigdata_spec.md` (PM-directed) |
 | Workspace rules | `.cursor/rules/multi-agent-orchestration.mdc` |

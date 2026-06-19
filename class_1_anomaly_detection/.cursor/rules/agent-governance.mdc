@@ -26,7 +26,8 @@ Load and blend **in this order**:
 
 1. `shared_data/DATA_LAYER.md` — paths, ingestion, guardrails
 2. `shared_docs/official/description_master_registration.md` and `description_transaction_supply.md` — column semantics
-3. `shared_docs/structured/class_1_anomaly_spec.md` — **supreme** for Agent 1 mandate on any conflict
+3. `shared_docs/structured/onsite_visit1_summary.md` — production calibration (Visit 1)
+4. `shared_docs/structured/class_1_anomaly_spec.md` — **supreme** for Agent 1 mandate on any conflict
 
 **Do not** read parallel structured specs (`class_2_forecast_spec.md`, `class_3_evaluation_spec.md`). Read `official/medical_device_bigdata_spec.md` only when PM directs.
 
