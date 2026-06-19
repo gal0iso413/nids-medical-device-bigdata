@@ -9,6 +9,7 @@ venv/
 .DS_Store
 shared_data/*.xlsx
 *.csv
+*.json
 
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*

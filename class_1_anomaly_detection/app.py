@@ -182,7 +182,7 @@ with tab_net:
     st.subheader("Supply Chain Network")
     st.caption(
         "Top-N entities by BC + 1-hop neighbours.  "
-        "Colour = entity type · Size = BC score (log) · **Red** = high-risk."
+        "Colour = entity type · Size = BC score (log) · **Red outline** = high-risk."
     )
 
     net_edges_df = dfs["net_edges"]
@@ -220,7 +220,8 @@ with tab_net:
                                  if G_sub.nodes[n].get("node_type", "unknown") == ntype]
                         if not group:
                             continue
-                        xs, ys, sizes, texts, colours = [], [], [], [], []
+                        xs, ys, sizes, texts = [], [], [], []
+                        line_widths, line_colors = [], []
                         for n in group:
                             xs.append(pos[n][0]); ys.append(pos[n][1])
                             if n in bc_idx.index:
@@ -233,7 +234,8 @@ with tab_net:
                             else:
                                 bc_val, high = 0.0, False
                             sizes.append(max(7, np.log1p(bc_val * 1e7) * 3 + 7))
-                            colours.append(_RISK_COLOR if high else base_color)
+                            line_widths.append(2.5 if high else 1.0)
+                            line_colors.append(_RISK_COLOR if high else "white")
                             label = G_sub.nodes[n].get("name") or str(n)
                             texts.append(
                                 f"<b>{label}</b>{'  ⚠️' if high else ''}<br>"
@@ -242,8 +244,11 @@ with tab_net:
                             )
                         traces.append(go.Scatter(
                             x=xs, y=ys, mode="markers", name=ntype,
-                            marker=dict(size=sizes, color=colours,
-                                        line=dict(width=1.5, color="white")),
+                            marker=dict(
+                                size=sizes,
+                                color=base_color,
+                                line=dict(width=line_widths, color=line_colors),
+                            ),
                             text=texts, hoverinfo="text",
                         ))
 
