@@ -16,6 +16,7 @@ class_*/research/*
 !class_*/research/.gitkeep
 class_*/notes/*
 !class_*/notes/.gitkeep
+class_*/output/*
 
 # Progess files
 PROGRESS.md

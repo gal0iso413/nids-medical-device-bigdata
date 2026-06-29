@@ -5,6 +5,8 @@ Reads pre-computed output CSVs from class_1_anomaly_detection/output/.
 Run run_graph_eda.py first (or again) to refresh them, then click
 "Reload data" in the sidebar.
 
+GNN Review tab reads per-model scores from output/ml/ (run_pygod_compare.py).
+
 Launch:  streamlit run class_1_anomaly_detection/app.py
 """
 from __future__ import annotations
@@ -24,6 +26,7 @@ _ROOT = _HERE.parent
 sys.path.insert(0, str(_ROOT))
 
 OUTPUT = _HERE / "output"
+ML_OUTPUT = OUTPUT / "ml"
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -50,6 +53,15 @@ _RISK_COLOR  = "#e41a1c"
 _WARN_COLOR  = "#f58518"
 _GOOD_COLOR  = "#54a24b"
 
+# slug -> (display name, score column, rank column, label column)
+GNN_MODELS: dict[str, tuple[str, str, str, str]] = {
+    "dominant": ("DOMINANT", "dominant_score", "dominant_rank", "dominant_label"),
+    "anomalydae": ("AnomalyDAE", "anomalydae_score", "anomalydae_rank", "anomalydae_label"),
+    "gadnr": ("GAD-NR", "gadnr_score", "gadnr_rank", "gadnr_label"),
+    "ocgnn": ("OCGNN", "ocgnn_score", "ocgnn_rank", "ocgnn_label"),
+    "isoforest": ("IsoForest (GAD-NR emb)", "isoforest_score", "isoforest_rank", "isoforest_label"),
+}
+
 
 # ---------------------------------------------------------------------------
 # CSV loader (cached; clear via sidebar button)
@@ -74,6 +86,41 @@ def load_outputs() -> dict[str, pd.DataFrame]:
     }
 
 
+@st.cache_data(show_spinner="Loading GNN model scores…")
+def load_gnn_scores(model_slug: str) -> pd.DataFrame:
+    p = ML_OUTPUT / f"entity_anomaly_scores_{model_slug}.csv"
+    if p.exists():
+        df = pd.read_csv(p)
+        df["entity_id"] = df["entity_id"].astype(str)
+        return df
+    return pd.DataFrame()
+
+
+@st.cache_data(show_spinner="Building full network from CSVs…")
+def build_full_graph() -> nx.DiGraph:
+    dfs = load_outputs()
+    edges_df = dfs["net_edges"]
+    nodes_df = dfs["net_nodes"]
+    if edges_df.empty or nodes_df.empty:
+        return nx.DiGraph()
+
+    G = nx.DiGraph()
+    for _, row in nodes_df.iterrows():
+        G.add_node(
+            row["entity_id"],
+            name=row.get("name", ""),
+            node_type=row.get("node_type", "unknown"),
+        )
+    for _, row in edges_df.iterrows():
+        G.add_edge(
+            row["src"],
+            row["dst"],
+            weight=row.get("weight", 0.0),
+            tx_count=row.get("tx_count", 1),
+        )
+    return G
+
+
 @st.cache_data(show_spinner="Building subgraph from CSVs…")
 def build_subgraph(top_n: int, show_hospitals: bool) -> nx.DiGraph:
     """
@@ -81,25 +128,13 @@ def build_subgraph(top_n: int, show_hospitals: bool) -> nx.DiGraph:
     Returns a subgraph containing top-N BC nodes + their 1-hop neighbours.
     """
     dfs = load_outputs()
-    edges_df = dfs["net_edges"]
     nodes_df = dfs["net_nodes"]
-    bc_df_   = dfs["bc"]
+    bc_df_ = dfs["bc"]
+    G = build_full_graph()
 
-    if edges_df.empty or nodes_df.empty or bc_df_.empty:
+    if G.number_of_nodes() == 0 or bc_df_.empty:
         return nx.DiGraph()
 
-    # Full graph from saved edge list
-    G = nx.DiGraph()
-    node_idx = nodes_df.set_index("entity_id")
-    for _, row in nodes_df.iterrows():
-        G.add_node(row["entity_id"], name=row.get("name", ""),
-                   node_type=row.get("node_type", "unknown"))
-    for _, row in edges_df.iterrows():
-        G.add_edge(row["src"], row["dst"],
-                   weight=row.get("weight", 0.0),
-                   tx_count=row.get("tx_count", 1))
-
-    # Subgraph: top-N by BC + 1-hop neighbours
     top_ids: set[str] = set(bc_df_.nlargest(top_n, "bc_score")["entity_id"])
     neighbours: set[str] = set()
     for nid in top_ids:
@@ -112,6 +147,159 @@ def build_subgraph(top_n: int, show_hospitals: bool) -> nx.DiGraph:
         neighbours -= hosp_ids
 
     return G.subgraph(top_ids | neighbours).copy()
+
+
+@st.cache_data(show_spinner="Building ego subgraph…")
+def build_ego_subgraph(focal_id: str, hops: int, show_hospitals: bool) -> nx.DiGraph:
+    """BFS ego network around one entity (predecessors + successors)."""
+    G = build_full_graph()
+    if focal_id not in G:
+        return nx.DiGraph()
+
+    nodes: set[str] = {focal_id}
+    frontier: set[str] = {focal_id}
+    for _ in range(hops):
+        nxt: set[str] = set()
+        for nid in frontier:
+            nxt.update(G.predecessors(nid))
+            nxt.update(G.successors(nid))
+        nodes |= nxt
+        frontier = nxt
+
+    if not show_hospitals:
+        hosp_ids = {
+            n for n in nodes if G.nodes[n].get("node_type") == "hospital"
+        }
+        nodes -= hosp_ids
+        nodes.add(focal_id)
+
+    return G.subgraph(nodes).copy()
+
+
+def render_network_figure(
+    G_sub: nx.DiGraph,
+    *,
+    layout_seed: int,
+    focal_id: str | None = None,
+    bc_df: pd.DataFrame | None = None,
+    gnn_df: pd.DataFrame | None = None,
+    gnn_score_col: str = "dominant_score",
+    gnn_score_label: str = "GNN",
+) -> go.Figure:
+    """Plotly network with optional focal-node highlight for GNN review."""
+    bc_idx = bc_df.set_index("entity_id") if bc_df is not None and not bc_df.empty else None
+    gnn_idx = (
+        gnn_df.set_index("entity_id")
+        if gnn_df is not None and not gnn_df.empty
+        else None
+    )
+
+    pos = nx.spring_layout(G_sub, seed=int(layout_seed), k=1.5)
+
+    ex, ey = [], []
+    for u, v in G_sub.edges():
+        x0, y0 = pos[u]
+        x1, y1 = pos[v]
+        ex += [x0, x1, None]
+        ey += [y0, y1, None]
+
+    traces: list = [
+        go.Scatter(
+            x=ex,
+            y=ey,
+            mode="lines",
+            line=dict(width=0.5, color="#dddddd"),
+            hoverinfo="none",
+            showlegend=False,
+        )
+    ]
+
+    for ntype, base_color in _TYPE_COLOR.items():
+        group = [
+            n
+            for n in G_sub.nodes()
+            if G_sub.nodes[n].get("node_type", "unknown") == ntype
+        ]
+        if not group:
+            continue
+        xs, ys, sizes, texts = [], [], [], []
+        line_widths, line_colors = [], []
+        for n in group:
+            xs.append(pos[n][0])
+            ys.append(pos[n][1])
+            is_focal = focal_id is not None and n == focal_id
+
+            bc_val = 0.0
+            high_bc = False
+            if bc_idx is not None and n in bc_idx.index:
+                row = bc_idx.loc[n]
+                if isinstance(row, pd.DataFrame):
+                    row = row.iloc[0]
+                bc_val = float(row["bc_score"])
+                high_bc = bool(row.get("high_risk", False))
+
+            gnn_val = 0.0
+            if gnn_idx is not None and n in gnn_idx.index:
+                row = gnn_idx.loc[n]
+                if isinstance(row, pd.DataFrame):
+                    row = row.iloc[0]
+                gnn_val = float(row.get(gnn_score_col, 0.0) or 0.0)
+
+            if is_focal:
+                sizes.append(28)
+                line_widths.append(4.0)
+                line_colors.append(_RISK_COLOR)
+            elif gnn_idx is not None and gnn_val > 0:
+                sizes.append(max(7, np.log1p(gnn_val) * 2 + 7))
+                line_widths.append(2.5 if high_bc else 1.0)
+                line_colors.append(_RISK_COLOR if high_bc else "white")
+            else:
+                sizes.append(max(7, np.log1p(bc_val * 1e7) * 3 + 7))
+                line_widths.append(2.5 if high_bc else 1.0)
+                line_colors.append(_RISK_COLOR if high_bc else "white")
+
+            label = G_sub.nodes[n].get("name") or str(n)
+            hover = (
+                f"<b>{label}</b>{'  [FOCAL]' if is_focal else ''}<br>"
+                f"Type: {ntype}<br>"
+                f"In: {G_sub.in_degree(n)}  Out: {G_sub.out_degree(n)}"
+            )
+            if gnn_idx is not None:
+                hover += f"<br>{gnn_score_label}: {gnn_val:.4g}"
+            if bc_idx is not None:
+                hover += f"<br>BC: {bc_val:.3e}"
+            texts.append(hover)
+
+        traces.append(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="markers",
+                name=ntype,
+                marker=dict(
+                    size=sizes,
+                    color=base_color,
+                    line=dict(width=line_widths, color=line_colors),
+                ),
+                text=texts,
+                hoverinfo="text",
+            )
+        )
+
+    return go.Figure(
+        data=traces,
+        layout=go.Layout(
+            showlegend=True,
+            hovermode="closest",
+            height=580,
+            margin=dict(b=20, l=5, r=5, t=10),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +342,16 @@ for name in ["pdi_per_udi", "bc_per_entity", "hhi_per_hospital_group",
         st.sidebar.caption(f"✅ {name}  `{mtime}`")
     else:
         st.sidebar.caption(f"❌ {name} — missing")
+st.sidebar.caption("**ML scores**")
+for slug in GNN_MODELS:
+    name = f"ml/entity_anomaly_scores_{slug}"
+    p = ML_OUTPUT / f"entity_anomaly_scores_{slug}.csv"
+    if p.exists():
+        import datetime
+        mtime = datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime("%m-%d %H:%M")
+        st.sidebar.caption(f"✅ {name}  `{mtime}`")
+    else:
+        st.sidebar.caption(f"❌ {name} — missing")
 
 # ---------------------------------------------------------------------------
 # Page header
@@ -170,8 +368,8 @@ if missing:
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab_net, tab_pdi, tab_bc, tab_hhi, tab_pz, tab_lag = st.tabs([
-    "🕸 Network", "📏 PDI", "📊 BC", "📈 HHI", "💰 Price Z-Score", "⏱ Time-lag"
+tab_net, tab_gnn, tab_pdi, tab_bc, tab_hhi, tab_pz, tab_lag = st.tabs([
+    "🕸 Network", "🧠 GNN Review", "📏 PDI", "📊 BC", "📈 HHI", "💰 Price Z-Score", "⏱ Time-lag"
 ])
 
 
@@ -201,68 +399,10 @@ with tab_net:
                 if G_sub.number_of_nodes() == 0:
                     st.warning("Subgraph is empty — try increasing top-N.")
                 else:
-                    bc_idx = bc_df.set_index("entity_id")
-                    pos = nx.spring_layout(G_sub, seed=int(layout_seed), k=1.5)
-
-                    ex, ey = [], []
-                    for u, v in G_sub.edges():
-                        x0, y0 = pos[u]; x1, y1 = pos[v]
-                        ex += [x0, x1, None]; ey += [y0, y1, None]
-
-                    traces: list = [go.Scatter(
-                        x=ex, y=ey, mode="lines",
-                        line=dict(width=0.5, color="#dddddd"),
-                        hoverinfo="none", showlegend=False,
-                    )]
-
-                    for ntype, base_color in _TYPE_COLOR.items():
-                        group = [n for n in G_sub.nodes()
-                                 if G_sub.nodes[n].get("node_type", "unknown") == ntype]
-                        if not group:
-                            continue
-                        xs, ys, sizes, texts = [], [], [], []
-                        line_widths, line_colors = [], []
-                        for n in group:
-                            xs.append(pos[n][0]); ys.append(pos[n][1])
-                            if n in bc_idx.index:
-                                row = bc_idx.loc[n]
-                                # loc returns DataFrame when index has duplicates
-                                if isinstance(row, pd.DataFrame):
-                                    row = row.iloc[0]
-                                bc_val = float(row["bc_score"])
-                                high   = bool(row.get("high_risk", False))
-                            else:
-                                bc_val, high = 0.0, False
-                            sizes.append(max(7, np.log1p(bc_val * 1e7) * 3 + 7))
-                            line_widths.append(2.5 if high else 1.0)
-                            line_colors.append(_RISK_COLOR if high else "white")
-                            label = G_sub.nodes[n].get("name") or str(n)
-                            texts.append(
-                                f"<b>{label}</b>{'  ⚠️' if high else ''}<br>"
-                                f"Type: {ntype}<br>BC: {bc_val:.3e}<br>"
-                                f"In: {G_sub.in_degree(n)}  Out: {G_sub.out_degree(n)}"
-                            )
-                        traces.append(go.Scatter(
-                            x=xs, y=ys, mode="markers", name=ntype,
-                            marker=dict(
-                                size=sizes,
-                                color=base_color,
-                                line=dict(width=line_widths, color=line_colors),
-                            ),
-                            text=texts, hoverinfo="text",
-                        ))
-
-                    fig_net = go.Figure(
-                        data=traces,
-                        layout=go.Layout(
-                            showlegend=True, hovermode="closest", height=580,
-                            margin=dict(b=20, l=5, r=5, t=10),
-                            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                            plot_bgcolor="white", paper_bgcolor="white",
-                            legend=dict(orientation="h", yanchor="bottom",
-                                        y=1.01, xanchor="left", x=0),
-                        ),
+                    fig_net = render_network_figure(
+                        G_sub,
+                        layout_seed=int(layout_seed),
+                        bc_df=bc_df,
                     )
                     st.plotly_chart(fig_net, use_container_width=True)
                     st.caption(
@@ -273,6 +413,189 @@ with tab_net:
             except Exception as exc:
                 st.error(f"Network error: {exc}")
                 st.info("Make sure run_graph_eda.py completed successfully.")
+
+
+# ============================================================
+# TAB — GNN REVIEW (PyGOD ego networks)
+# ============================================================
+with tab_gnn:
+    st.subheader("GNN Review — Top Distributors by Model")
+    st.caption(
+        "Ego-network around each top-scored distributor per PyGOD model.  "
+        "**Red outline** = focal entity · Colour = type · Hover shows model score + BC."
+    )
+
+    available_models = {
+        display: slug
+        for slug, (display, *_rest) in GNN_MODELS.items()
+        if not load_gnn_scores(slug).empty
+    }
+
+    if not available_models:
+        st.info(
+            "No GNN score files found in `output/ml/`.  "
+            "Run `python -m class_1_anomaly_detection.src.experiments.run_pygod_compare` first."
+        )
+    elif dfs["net_edges"].empty or dfs["net_nodes"].empty:
+        st.info("Network CSVs missing — re-run `run_graph_eda.py`.")
+    else:
+        model_display = st.selectbox(
+            "GNN model",
+            list(available_models.keys()),
+            key="gnn_model_select",
+        )
+        model_slug = available_models[model_display]
+        model_label, score_col, rank_col, label_col = GNN_MODELS[model_slug]
+        gnn_df = load_gnn_scores(model_slug)
+
+        top_dist = (
+            gnn_df[gnn_df["node_type"] == "distributor"]
+            .nlargest(10, score_col)
+            .copy()
+        )
+
+        if top_dist.empty:
+            st.warning(f"No distributors in {model_label} results.")
+        else:
+            table_cols = [
+                c
+                for c in [rank_col, "name", "entity_id", score_col, "bc_score", "bc_rank", label_col]
+                if c in top_dist.columns
+            ]
+            st.dataframe(top_dist[table_cols], use_container_width=True, height=220)
+
+            ctrl1, ctrl2, ctrl3 = st.columns(3)
+            with ctrl1:
+                options = {
+                    f"{row['name']} ({row['entity_id']}) - score {row[score_col]:.4g}": row[
+                        "entity_id"
+                    ]
+                    for _, row in top_dist.iterrows()
+                }
+                pick_label = st.selectbox("Focal distributor", list(options.keys()))
+                focal_id = str(options[pick_label])
+            with ctrl2:
+                ego_hops = st.slider("Hop depth", 1, 2, 1, key="gnn_hops")
+            with ctrl3:
+                gnn_show_hosp = st.checkbox(
+                    "Show hospitals", value=True, key="gnn_show_hospitals"
+                )
+
+            focal_row = top_dist.loc[top_dist["entity_id"] == focal_id].iloc[0]
+            G_full = build_full_graph()
+            G_ego = build_ego_subgraph(focal_id, ego_hops, gnn_show_hosp)
+
+            pz_row = (
+                pz_ent_df.loc[pz_ent_df["supplier_id"] == focal_id]
+                if not pz_ent_df.empty and "supplier_id" in pz_ent_df.columns
+                else pd.DataFrame()
+            )
+            lag_row = (
+                timelag_df.loc[timelag_df["supplier_id"] == focal_id]
+                if not timelag_df.empty and "supplier_id" in timelag_df.columns
+                else pd.DataFrame()
+            )
+
+            met1, met2, met3, met4, met5 = st.columns(5)
+            met1.metric(f"{model_label} score", f"{focal_row[score_col]:.4g}")
+            met2.metric(f"{model_label} rank", int(focal_row.get(rank_col, 0)))
+            met3.metric("BC score", f"{float(focal_row.get('bc_score', 0)):.2e}")
+            met4.metric(
+                "Price flag rate",
+                f"{float(pz_row.iloc[0]['flag_rate']):.1%}"
+                if not pz_row.empty and "flag_rate" in pz_row.columns
+                else "n/a",
+            )
+            lag_col = (
+                "median_lag_days"
+                if not lag_row.empty and "median_lag_days" in lag_row.columns
+                else "lag_days"
+            )
+            met5.metric(
+                "Median time-lag (d)",
+                f"{float(lag_row.iloc[0][lag_col]):.0f}"
+                if not lag_row.empty and lag_col in lag_row.columns
+                else "n/a",
+            )
+
+            plot_col, info_col = st.columns([3, 1])
+            with plot_col:
+                if G_ego.number_of_nodes() == 0:
+                    st.warning("Ego subgraph is empty for this entity.")
+                else:
+                    with st.spinner("Rendering ego network…"):
+                        fig_gnn = render_network_figure(
+                            G_ego,
+                            layout_seed=int(layout_seed),
+                            focal_id=focal_id,
+                            bc_df=bc_df,
+                            gnn_df=gnn_df,
+                            gnn_score_col=score_col,
+                            gnn_score_label=model_label,
+                        )
+                        st.plotly_chart(fig_gnn, use_container_width=True)
+                        st.caption(
+                            f"{model_label} ego network: {G_ego.number_of_nodes():,} nodes · "
+                            f"{G_ego.number_of_edges():,} edges · {ego_hops}-hop"
+                        )
+
+            with info_col:
+                st.markdown("**Focal entity**")
+                st.markdown(f"**{focal_row.get('name', focal_id)}**")
+                st.caption(focal_id)
+                if focal_id in G_full:
+                    st.markdown(
+                        f"In-degree: **{G_full.in_degree(focal_id)}**  \n"
+                        f"Out-degree: **{G_full.out_degree(focal_id)}**"
+                    )
+                st.markdown("**Legend**")
+                st.caption("Orange = distributor · Green = hospital · Red ring = focal")
+
+            if focal_id in G_full and G_ego.number_of_nodes() > 0:
+                in_rows = []
+                for pred in G_ego.predecessors(focal_id):
+                    in_rows.append(
+                        {
+                            "entity_id": pred,
+                            "name": G_ego.nodes[pred].get("name", ""),
+                            "type": G_ego.nodes[pred].get("node_type", ""),
+                            "tx_count": G_full[pred][focal_id].get("tx_count", 0)
+                            if G_full.has_edge(pred, focal_id)
+                            else 0,
+                        }
+                    )
+                out_rows = []
+                for succ in G_ego.successors(focal_id):
+                    out_rows.append(
+                        {
+                            "entity_id": succ,
+                            "name": G_ego.nodes[succ].get("name", ""),
+                            "type": G_ego.nodes[succ].get("node_type", ""),
+                            "tx_count": G_full[focal_id][succ].get("tx_count", 0)
+                            if G_full.has_edge(focal_id, succ)
+                            else 0,
+                        }
+                    )
+
+                nb1, nb2 = st.columns(2)
+                with nb1:
+                    st.markdown("**Inbound (suppliers → focal)**")
+                    st.dataframe(
+                        pd.DataFrame(in_rows).sort_values("tx_count", ascending=False)
+                        if in_rows
+                        else pd.DataFrame(columns=["entity_id", "name", "type", "tx_count"]),
+                        use_container_width=True,
+                        height=220,
+                    )
+                with nb2:
+                    st.markdown("**Outbound (focal → receivers)**")
+                    st.dataframe(
+                        pd.DataFrame(out_rows).sort_values("tx_count", ascending=False)
+                        if out_rows
+                        else pd.DataFrame(columns=["entity_id", "name", "type", "tx_count"]),
+                        use_container_width=True,
+                        height=220,
+                    )
 
 
 # ============================================================
