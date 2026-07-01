@@ -36,12 +36,19 @@ _JOIN_COLS_CANONICAL = ["_jk_item", "_jk_model", "_jk_udidi"]
 MASTER_BUSINESS_TYPE_DETAILED = "업종.1"
 
 # Price thresholds (from top7 EDA: barcode-in-price outlier confirmed)
-PRICE_CAP_KRW: float = 50_000_000.0
+PRICE_CAP_KRW: float = 50_000_000.0  # legacy reference; prefer BARCODE_PRICE_THRESHOLD
+BARCODE_PRICE_THRESHOLD: float = 1e12  # values above this are scan/entry errors, not prices
 
 # Supply destination for anomaly/HHI filtering (hospital segment)
 HOSPITAL_SUPPLY_TYPE: str = "의료기관에 공급"
 
-# Discard supply classification — receivers are always null; exclude from flow graphs
+# Supply classification whitelist — forward-flow rows only (graph topology)
+VALID_SUPPLY_CLASSES: frozenset[str] = frozenset({"출고"})
+
+# Rolling window for main supply-network graph (months, inclusive)
+ROLLING_WINDOW_MONTHS: int = 3
+
+# Discard supply classification — receivers are always null; kept for profiling only
 DISCARD_SUPPLY_CLASS: str = "폐기"
 
 # Import proxy: manufacturer country (제조원국가) is 100% null in top7; use business type instead
@@ -82,6 +89,41 @@ COL_SUPPLY_CLASS: str = "공급구분" # col F — issue/return/discard/lease/re
 COL_SUPPLIER_TYPE: str = "업종"    # col D — supplier business type
 COL_RECEIVER_TYPE: str = "공급받은자업종"  # col M — receiver business type
 COL_UDI: str = "UDI-DI"           # col AA
+COL_ITEM_SERIAL: str = "의료기기품목일련번호"   # col T — 3-key composite (item)
+COL_MODEL_SERIAL: str = "모델일련번호"           # col BI — 3-key composite (model)
+COL_UDI_SERIAL: str = "UDI-DI 일련번호"  # col AB — 3-key composite (UDI serial)
+COL_BASE_MONTH: str = "공급내역기준연월"   # col AZ — YYYYMM monthly slice
+COL_LOCATION_SUPPLIER: str = "공급한자의 소재지 시도코드"   # col AX
+COL_LOCATION_RECEIVER: str = "공급받은자의 소재지 시도코드"  # col AV
+COL_DEVICE_CLASS: str = "등급"                    # col X
+COL_TRACEABLE: str = "추적관리대상"               # col AM
+COL_SINGLE_USE: str = "일회용여부"                # col BC
+COL_REIMBURSABLE: str = "요양급여대상여부"        # col AR
+COL_COMPOSITE_KEY: str = "공급내역보고자료복합Key"  # col BJ
+
+
+def filter_valid_supply_rows(
+    df: pd.DataFrame,
+    *,
+    supply_classes: frozenset[str] | None = None,
+) -> pd.DataFrame:
+    """Keep only forward-flow supply rows (default: 출고 only)."""
+    sc = supply_classes if supply_classes is not None else VALID_SUPPLY_CLASSES
+    if COL_SUPPLY_CLASS in df.columns:
+        return df[df[COL_SUPPLY_CLASS].isin(sc)].copy()
+    return df.copy()
+
+
+def yn_to_bool(value: Any) -> bool:
+    """Convert Y/N, 1/0, or boolean-like supply flags to bool."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) != 0.0
+    s = str(value).strip().upper()
+    return s in {"Y", "YES", "1", "TRUE", "예"}
 
 
 def normalize_reg_number(reg: Any) -> str | None:
@@ -209,7 +251,7 @@ def classify_node_type(business_type: Any, *, hospital_code: Any = None) -> str:
     if hospital_code is not None and pd.notna(hospital_code) and str(hospital_code).strip():
         return "hospital"
     if pd.isna(business_type):
-        return "unknown"
+        return "other"
     s = str(business_type).strip()
     if "의료기관" in s:
         return "hospital"

@@ -2,13 +2,11 @@
 Path Depth Index (PDI) — detect indirect supply and multi-stage detours.
 
 Definition (spec §3 착수보고서):
-  PDI_udi = max path length from any source node (in-degree=0 or type=manufacturer/importer)
-            to any sink node (type=hospital) through edges carrying that UDI-DI.
+  PDI per 3-key product composite (item_serial, model_serial, udi_serial) =
+  max path length from any source node (in-degree=0 or type=manufacturer/importer)
+  to any sink node (type=hospital) through edges carrying that product.
 
 Regulatory threshold: PDI >= 3 triggers a high-risk indirect-supply flag.
-Spec note (Phase 1): differential thresholds by device class are intended but the exact
-per-class values are a PM decision.  Phase 1 enriches the output with ``device_class``
-(from master join) so the PM can set class-specific gates later without recomputation.
 """
 from __future__ import annotations
 
@@ -16,10 +14,11 @@ import pandas as pd
 import networkx as nx
 
 from ..ingest.keys import (
-    DISCARD_SUPPLY_CLASS,
+    filter_valid_supply_rows,
     classify_node_type,
     normalize_supply_entity_id,
     normalize_receiver_entity_id,
+    strip_float_suffix,
     COL_SUPPLIER_SERIAL,
     COL_SUPPLIER_REG,
     COL_SUPPLIER_NAME,
@@ -29,40 +28,52 @@ from ..ingest.keys import (
     COL_RECEIVER_NAME,
     COL_RECEIVER_TYPE,
     COL_HOSPITAL_CODE,
-    COL_SUPPLY_CLASS,
+    COL_UDI,
+    COL_ITEM_SERIAL,
+    COL_MODEL_SERIAL,
+    COL_UDI_SERIAL,
 )
 
-_COL_UDI = "UDI-DI"
-_COL_DATE = "공급일자"
-
 PDI_HIGH_RISK_THRESHOLD = 3
+PDI_PATH_CUTOFF = 6
 
 _SOURCE_TYPES = {"manufacturer", "importer"}
 _SINK_TYPES = {"hospital"}
 
 
-def _build_udi_graph(df_udi: pd.DataFrame) -> nx.DiGraph:
-    """Build a directed graph for a single UDI-DI."""
+def _serial_str(series: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(series):
+        return strip_float_suffix(series).astype("Int64").astype(str)
+    return series.astype(str).str.strip()
+
+
+def _product_key_frame(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["_item_serial"] = (
+        _serial_str(out[COL_ITEM_SERIAL]) if COL_ITEM_SERIAL in out.columns else "0"
+    )
+    out["_model_serial"] = (
+        _serial_str(out[COL_MODEL_SERIAL]) if COL_MODEL_SERIAL in out.columns else "0"
+    )
+    out["_udi_serial"] = (
+        _serial_str(out[COL_UDI_SERIAL]) if COL_UDI_SERIAL in out.columns else "0"
+    )
+    out["_product_key"] = (
+        out["_item_serial"] + "_" + out["_model_serial"] + "_" + out["_udi_serial"]
+    )
+    return out
+
+
+def _build_product_graph(df_product: pd.DataFrame) -> nx.DiGraph:
+    """Build a directed graph for a single 3-key product composite."""
     G = nx.DiGraph()
-    for _, row in df_udi.iterrows():
-        src = normalize_supply_entity_id(
-            row.get(COL_SUPPLIER_SERIAL),
-            row.get(COL_SUPPLIER_REG),
-            row.get(COL_SUPPLIER_NAME),
-        )
-        dst = normalize_receiver_entity_id(
-            row.get(COL_RECEIVER_SERIAL),
-            row.get(COL_RECEIVER_REG),
-            row.get(COL_RECEIVER_NAME),
-            hospital_code=row.get(COL_HOSPITAL_CODE),
-        )
+    for row in df_product.itertuples(index=False):
+        src = getattr(row, "_src_id", "unknown")
+        dst = getattr(row, "_dst_id", "unknown")
         if src == "unknown" or dst == "unknown" or src == dst:
             continue
-        src_type = classify_node_type(row.get(COL_SUPPLIER_TYPE))
-        dst_type = classify_node_type(
-            row.get(COL_RECEIVER_TYPE),
-            hospital_code=row.get(COL_HOSPITAL_CODE),
-        )
+        src_type = getattr(row, "_src_type", "other")
+        dst_type = getattr(row, "_dst_type", "other")
         if src not in G:
             G.add_node(src, node_type=src_type)
         if dst not in G:
@@ -72,11 +83,43 @@ def _build_udi_graph(df_udi: pd.DataFrame) -> nx.DiGraph:
     return G
 
 
+def _prepare_pdi_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Precompute normalized ids and node types once for PDI grouping."""
+    out = df.copy()
+    out["_src_id"] = out.apply(
+        lambda r: normalize_supply_entity_id(
+            r.get(COL_SUPPLIER_SERIAL),
+            r.get(COL_SUPPLIER_REG),
+            r.get(COL_SUPPLIER_NAME),
+        ),
+        axis=1,
+    )
+    out["_dst_id"] = out.apply(
+        lambda r: normalize_receiver_entity_id(
+            r.get(COL_RECEIVER_SERIAL),
+            r.get(COL_RECEIVER_REG),
+            r.get(COL_RECEIVER_NAME),
+            hospital_code=r.get(COL_HOSPITAL_CODE),
+        ),
+        axis=1,
+    )
+    out["_src_type"] = out.apply(
+        lambda r: classify_node_type(r.get(COL_SUPPLIER_TYPE)),
+        axis=1,
+    )
+    out["_dst_type"] = out.apply(
+        lambda r: classify_node_type(
+            r.get(COL_RECEIVER_TYPE),
+            hospital_code=r.get(COL_HOSPITAL_CODE),
+        ),
+        axis=1,
+    )
+    return out
+
+
 def _max_source_to_sink_path(G: nx.DiGraph) -> int:
     """
     Return the length of the longest simple path from any source to any sink.
-    Source: in-degree=0 OR node_type in {manufacturer, importer}.
-    Sink: node_type = hospital.
     Returns 0 if no valid source-to-sink path exists.
     """
     sources = [
@@ -96,12 +139,9 @@ def _max_source_to_sink_path(G: nx.DiGraph) -> int:
             if src == snk:
                 continue
             try:
-                # Use simple paths to avoid cycles; take the longest one found
-                for path in nx.all_simple_paths(G, src, snk, cutoff=10):
+                for path in nx.all_simple_paths(G, src, snk, cutoff=PDI_PATH_CUTOFF):
                     max_len = max(max_len, len(path) - 1)
-            except nx.NetworkXNoPath:
-                continue
-            except nx.NodeNotFound:
+            except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
     return max_len
 
@@ -113,106 +153,95 @@ def compute_pdi(
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
-    Compute Path Depth Index for each unique UDI-DI in the supply DataFrame.
+    Compute Path Depth Index for each unique 3-key product composite.
 
     Parameters
     ----------
     supply:
-        Top7 supply DataFrame (loaded + price-capped).
+        Top7 supply DataFrame.
     master:
-        Optional top7 master DataFrame.  When provided the output is enriched
-        with ``device_class`` (등급) per UDI-DI.  The spec (Phase 1) requires
-        differential PDI thresholds by device class; the exact class-specific
-        values are a PM decision — this column enables that gate without
-        recomputation.
+        Optional top7 master DataFrame for device-class enrichment.
 
     Returns
     -------
     pd.DataFrame with columns:
-      - udi_di: UDI-DI value
-      - pdi: max hop count from source to hospital
-      - high_risk: True if pdi >= PDI_HIGH_RISK_THRESHOLD
-      - device_class: device grade from master (if master supplied, else NaN)
-      - tx_count: number of supply rows for this UDI-DI
-      - unique_suppliers: supplier entity count
-      - unique_receivers: receiver entity count
+      - product_key, item_serial, model_serial, udi_di_serial, udi_di, pdi, ...
     """
-    if COL_SUPPLY_CLASS in supply.columns:
-        df = supply[supply[COL_SUPPLY_CLASS] != DISCARD_SUPPLY_CLASS].copy()
-    else:
-        df = supply.copy()
+    df = filter_valid_supply_rows(supply)
+    df = _product_key_frame(df)
 
-    if _COL_UDI not in df.columns:
-        raise KeyError(f"Column '{_COL_UDI}' not found in supply DataFrame.")
+    required = {COL_ITEM_SERIAL, COL_MODEL_SERIAL, COL_UDI_SERIAL}
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(f"Missing product key columns: {sorted(missing)}")
 
-    # Build UDI-DI → device class lookup from master if provided
     udi_class: dict[str, str] = {}
-    if master is not None and "UDI-DI" in master.columns and "등급" in master.columns:
-        for _, mrow in master[["UDI-DI", "등급"]].drop_duplicates().iterrows():
-            udi_val = str(mrow["UDI-DI"]).strip()
+    if master is not None and COL_UDI in master.columns and "등급" in master.columns:
+        for _, mrow in master[[COL_UDI, "등급"]].drop_duplicates().iterrows():
+            udi_val = str(mrow[COL_UDI]).strip()
             grade = str(mrow["등급"]).strip() if pd.notna(mrow["등급"]) else ""
             if udi_val and grade:
                 udi_class[udi_val] = grade
 
+    df = _prepare_pdi_rows(df)
     records = []
-    udis = df[_COL_UDI].dropna().unique()
+    grouped = df.groupby("_product_key", sort=False)
+    product_keys = grouped.size().index
     if verbose:
-        print(f"[PDI] Computing for {len(udis)} unique UDI-DI values...")
+        print(f"[PDI] Computing for {len(product_keys)} unique 3-key product composites...")
 
-    for udi in udis:
-        df_udi = df[df[_COL_UDI] == udi]
-        G = _build_udi_graph(df_udi)
+    for product_key, df_product in grouped:
+        G = _build_product_graph(df_product)
         pdi = _max_source_to_sink_path(G)
 
-        sup_ids = set()
-        rec_ids = set()
-        for _, row in df_udi.iterrows():
-            sup_ids.add(
-                normalize_supply_entity_id(
-                    row.get(COL_SUPPLIER_SERIAL),
-                    row.get(COL_SUPPLIER_REG),
-                    row.get(COL_SUPPLIER_NAME),
-                )
-            )
-            rec_ids.add(
-                normalize_receiver_entity_id(
-                    row.get(COL_RECEIVER_SERIAL),
-                    row.get(COL_RECEIVER_REG),
-                    row.get(COL_RECEIVER_NAME),
-                    hospital_code=row.get(COL_HOSPITAL_CODE),
-                )
-            )
-        sup_ids.discard("unknown")
-        rec_ids.discard("unknown")
+        udi_label = (
+            str(df_product[COL_UDI].iloc[0]).strip()
+            if COL_UDI in df_product.columns and df_product[COL_UDI].notna().any()
+            else str(df_product["_udi_serial"].iloc[0])
+        )
+
+        unique_suppliers = int(df_product.loc[df_product["_src_id"] != "unknown", "_src_id"].nunique())
+        unique_receivers = int(df_product.loc[df_product["_dst_id"] != "unknown", "_dst_id"].nunique())
 
         records.append({
-            "udi_di": udi,
+            "product_key": product_key,
+            "item_serial": df_product["_item_serial"].iloc[0],
+            "model_serial": df_product["_model_serial"].iloc[0],
+            "udi_di_serial": df_product["_udi_serial"].iloc[0],
+            "udi_di": udi_label,
             "pdi": pdi,
             "high_risk": pdi >= PDI_HIGH_RISK_THRESHOLD,
-            "device_class": udi_class.get(str(udi).strip(), float("nan")),
-            "tx_count": len(df_udi),
-            "unique_suppliers": len(sup_ids),
-            "unique_receivers": len(rec_ids),
+            "device_class": udi_class.get(udi_label, float("nan")),
+            "tx_count": len(df_product),
+            "unique_suppliers": unique_suppliers,
+            "unique_receivers": unique_receivers,
         })
 
     result = pd.DataFrame(records).sort_values("pdi", ascending=False)
 
-    if verbose:
+    if verbose and len(result) > 0:
         high_risk_count = result["high_risk"].sum()
-        print(f"[PDI] High-risk UDIs (PDI≥{PDI_HIGH_RISK_THRESHOLD}): "
-              f"{high_risk_count}/{len(result)} ({high_risk_count/len(result):.1%})")
-        print(result[["udi_di", "pdi", "high_risk", "device_class", "tx_count"]].to_string(index=False))
+        print(
+            f"[PDI] High-risk products (PDI≥{PDI_HIGH_RISK_THRESHOLD}): "
+            f"{high_risk_count}/{len(result)} ({high_risk_count/len(result):.1%})"
+        )
+        print(
+            result[
+                ["product_key", "udi_di", "pdi", "high_risk", "device_class", "tx_count"]
+            ].head(20).to_string(index=False)
+        )
 
     return result
 
 
 def pdi_summary(pdi_df: pd.DataFrame) -> dict:
     return {
-        "total_udis": len(pdi_df),
-        "high_risk_count": int(pdi_df["high_risk"].sum()),
-        "high_risk_pct": round(float(pdi_df["high_risk"].mean()), 4),
-        "pdi_max": int(pdi_df["pdi"].max()),
-        "pdi_mean": round(float(pdi_df["pdi"].mean()), 2),
-        "pdi_median": int(pdi_df["pdi"].median()),
-        "distribution": pdi_df["pdi"].value_counts().sort_index().to_dict(),
+        "total_products": len(pdi_df),
+        "total_udis": len(pdi_df),  # backward-compat key for EDA summary
+        "high_risk_count": int(pdi_df["high_risk"].sum()) if len(pdi_df) else 0,
+        "high_risk_pct": round(float(pdi_df["high_risk"].mean()), 4) if len(pdi_df) else 0.0,
+        "pdi_max": int(pdi_df["pdi"].max()) if len(pdi_df) else 0,
+        "pdi_mean": round(float(pdi_df["pdi"].mean()), 2) if len(pdi_df) else 0.0,
+        "pdi_median": int(pdi_df["pdi"].median()) if len(pdi_df) else 0,
+        "distribution": pdi_df["pdi"].value_counts().sort_index().to_dict() if len(pdi_df) else {},
     }
