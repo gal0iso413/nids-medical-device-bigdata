@@ -10,6 +10,7 @@ venv/
 shared_data/*.xlsx
 *.csv
 *.json
+class_*/output/
 
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
