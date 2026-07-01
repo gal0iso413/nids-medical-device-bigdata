@@ -6,9 +6,9 @@ models (OCGNN one-class, IsoForest on GAD-NR embeddings), writes per-model
 score CSVs, a combined wide table, and a comparison report.
 
 Run from repo root:
-  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare
-  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --models ocgnn isoforest
-  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --reuse
+  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --anchor-month 202605
+  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --anchor-month 202605 --models dominant gadnr
+  python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --anchor-month 202605 --reuse
 """
 from __future__ import annotations
 
@@ -31,20 +31,30 @@ from class_1_anomaly_detection.src.experiments.pygod_common import (
     ML_OUTPUT_DIR,
     MODEL_SLUGS,
     apply_pygod_gadnr_patch,
+    build_run_fingerprint,
+    is_reuse_valid,
     labels_from_scores,
+    list_available_anchor_months,
+    list_compare_ready_anchor_months,
     load_all_saved_frames,
     load_baseline_tables,
     load_pyg_data,
     load_saved_scores,
+    normalize_anchor_month,
     rank_overlap,
+    read_json,
+    rolling_ml_dir,
+    rolling_pyg_dir,
     save_model_scores,
     scores_to_frame,
     spearman_corr,
     top_distributors,
+    write_json,
 )
 
 DEFAULT_EPOCH = 30
 DEFAULT_HID_DIM = 64
+CODE_VERSION = "run_pygod_compare_anchor_v1"
 
 
 def _require_pygod():
@@ -165,6 +175,7 @@ def build_comparison_report(
     frames: dict[str, pd.DataFrame],
     timings: dict[str, float],
     *,
+    anchor_month: str | None,
     epoch: int,
     hid_dim: int,
     data_meta: dict[str, int],
@@ -173,6 +184,7 @@ def build_comparison_report(
     idx_frames = {s: df.set_index("entity_id") for s, df in frames.items()}
 
     report: dict[str, Any] = {
+        "anchor_month": anchor_month,
         "models": slugs,
         "epoch": epoch,
         "hid_dim": hid_dim,
@@ -213,7 +225,7 @@ def build_comparison_report(
     report["model_pair_overlap"] = overlap
 
     bc_overlap: dict[str, Any] = {}
-    baselines = load_baseline_tables()
+    baselines = load_baseline_tables(anchor_month=anchor_month)
     if "bc" in baselines:
         bc_scores = baselines["bc"].set_index("entity_id")["bc_score"]
         for s in slugs:
@@ -245,39 +257,172 @@ def build_comparison_report(
 def run_compare(
     models: list[str] | None = None,
     *,
+    anchor_month: str | None = None,
+    epoch: int = DEFAULT_EPOCH,
+    hid_dim: int = DEFAULT_HID_DIM,
+    verbose: int = 1,
+    reuse: bool = False,
+    all_anchors: bool = False,
+) -> pd.DataFrame | dict[str, pd.DataFrame]:
+    _require_pygod()
+    models = list(models or MODEL_SLUGS)
+
+    if all_anchors and anchor_month is not None:
+        raise ValueError("Use either --anchor-month or --all-anchors, not both.")
+
+    if not all_anchors:
+        anchor = normalize_anchor_month(anchor_month)
+        return _run_compare_single_anchor(
+            anchor=anchor,
+            models=models,
+            epoch=epoch,
+            hid_dim=hid_dim,
+            verbose=verbose,
+            reuse=reuse,
+        )
+
+    discovered = list_available_anchor_months()
+    ready = list_compare_ready_anchor_months()
+    skipped = [a for a in discovered if a not in set(ready)]
+    results: dict[str, pd.DataFrame] = {}
+    failures: list[dict[str, str]] = []
+    summaries: list[dict[str, Any]] = []
+
+    if verbose:
+        print("=" * 70)
+        print("  PyGOD model comparison - all anchors")
+        print("=" * 70)
+        if discovered:
+            print(f"  Discovered anchors : {len(discovered)} ({discovered[0]} ~ {discovered[-1]})")
+        else:
+            print("  Discovered anchors : 0")
+        print(f"  Compare-ready      : {len(ready)}")
+        print(f"  Skipped (missing rolling/PyG): {len(skipped)}")
+
+    for anchor in ready:
+        try:
+            combined = _run_compare_single_anchor(
+                anchor=anchor,
+                models=models,
+                epoch=epoch,
+                hid_dim=hid_dim,
+                verbose=verbose,
+                reuse=reuse,
+            )
+            results[anchor] = combined
+            report_path = rolling_ml_dir(anchor) / "pygod_model_comparison.json"
+            report = read_json(report_path) or {}
+            summaries.append(
+                {
+                    "anchor_month": anchor,
+                    "entities": int(len(combined)),
+                    "models": report.get("models", []),
+                    "flagged_nodes": report.get("flagged_nodes", {}),
+                    "report_json": str(report_path.relative_to(_REPO_ROOT)).replace("\\", "/"),
+                }
+            )
+        except Exception as exc:
+            failures.append({"anchor_month": anchor, "error": str(exc)})
+            if verbose:
+                print(f"  [anchor {anchor}] failed: {exc}")
+
+    summary_payload: dict[str, Any] = {
+        "mode": "all_anchors",
+        "models_requested": models,
+        "discovered_anchors": discovered,
+        "compare_ready_anchors": ready,
+        "skipped_missing_inputs": skipped,
+        "success_count": len(results),
+        "failure_count": len(failures),
+        "failures": failures,
+        "anchors": summaries,
+    }
+    summary_path = ML_OUTPUT_DIR / "run_compare_all_anchors_summary.json"
+    write_json(summary_path, summary_payload)
+    if verbose:
+        print("\n" + "=" * 70)
+        print("  All-anchor compare summary")
+        print("=" * 70)
+        print(f"  Successes: {len(results)}")
+        print(f"  Failures : {len(failures)}")
+        print(f"  Summary  : {summary_path.relative_to(_REPO_ROOT)}")
+        print("=" * 70)
+
+    return results
+
+
+def _run_compare_single_anchor(
+    *,
+    anchor: str,
+    models: list[str] | None = None,
     epoch: int = DEFAULT_EPOCH,
     hid_dim: int = DEFAULT_HID_DIM,
     verbose: int = 1,
     reuse: bool = False,
 ) -> pd.DataFrame:
-    _require_pygod()
     models = list(models or MODEL_SLUGS)
 
-    data, entity_ids = load_pyg_data()
-    baselines = load_baseline_tables()
+    data, entity_ids = load_pyg_data(anchor_month=anchor)
+    baselines = load_baseline_tables(anchor_month=anchor)
+    ml_dir = rolling_ml_dir(anchor)
+    pyg_dir = rolling_pyg_dir(anchor)
+    ml_dir.mkdir(parents=True, exist_ok=True)
+
+    pyg_meta = read_json(pyg_dir / "metadata.json") or {}
+    feature_signature = str(
+        pyg_meta.get("feature_signature")
+        or f"f{int(data.x.shape[1])}"
+    )
+    input_signature = json.dumps(
+        {
+            "nodes": int(data.num_nodes),
+            "edges": int(data.edge_index.shape[1]),
+            "feature_dim": int(data.x.shape[1]),
+            "pyg_signature": feature_signature,
+        },
+        sort_keys=True,
+    )
+    fingerprint = build_run_fingerprint(
+        anchor_month=anchor,
+        window_months=[str(m) for m in pyg_meta.get("window_months", [])],
+        models=models,
+        epoch=epoch,
+        hid_dim=hid_dim,
+        contamination=DEFAULT_CONTAMINATION,
+        feature_signature=feature_signature,
+        input_signature=input_signature,
+        code_version=CODE_VERSION,
+    )
+    meta_path = ml_dir / "run_compare_metadata.json"
+    reuse_allowed = reuse and is_reuse_valid(meta_path, fingerprint)
 
     if verbose:
         print("=" * 70)
         print("  PyGOD model comparison")
         print("=" * 70)
+        print(f"  Anchor    : {anchor}")
         print(f"  Models    : {', '.join(models)}")
         print(f"  Nodes     : {data.num_nodes:,}")
         print(f"  Edges     : {data.edge_index.shape[1]:,}")
         print(f"  Features  : {data.x.shape[1]}")
         print(f"  Epochs    : {epoch}")
+        if reuse and not reuse_allowed:
+            print("  Reuse     : disabled (fingerprint mismatch or metadata missing)")
+        elif reuse_allowed:
+            print("  Reuse     : enabled (strict fingerprint match)")
         print("=" * 70)
 
     frames: dict[str, pd.DataFrame] = {}
     timings: dict[str, float] = {}
 
     for slug in models:
-        if reuse:
-            cached = load_saved_scores(slug)
+        if reuse_allowed:
+            cached = load_saved_scores(slug, anchor_month=anchor)
             if cached is not None:
                 frames[slug] = cached
                 timings[slug] = 0.0
                 if verbose:
-                    print(f"  [{slug.upper()}] reused {ML_OUTPUT_DIR.name}/entity_anomaly_scores_{slug}.csv")
+                    print(f"  [{slug.upper()}] reused {ml_dir.name}/entity_anomaly_scores_{slug}.csv")
                 continue
 
         if verbose:
@@ -287,25 +432,25 @@ def run_compare(
         )
         timings[slug] = elapsed
         df = scores_to_frame(entity_ids, scores, labels, slug, baselines)
-        path = save_model_scores(df, slug)
+        path = save_model_scores(df, slug, anchor_month=anchor)
         frames[slug] = df
         if verbose:
             flagged = int((labels == 1).sum())
             print(f"  [{slug.upper()}] done in {elapsed:.1f}s - flagged {flagged:,} nodes")
             print(f"  [{slug.upper()}] saved {path.relative_to(_REPO_ROOT)}")
 
-    all_frames = load_all_saved_frames()
+    all_frames = load_all_saved_frames(slugs=tuple(models), anchor_month=anchor)
     all_frames.update(frames)
     all_timings = {slug: timings.get(slug, 0.0) for slug in all_frames}
 
     combined = merge_combined(all_frames)
-    combined_path = ML_OUTPUT_DIR / "entity_anomaly_scores_combined.csv"
-    ML_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    combined_path = ml_dir / "entity_anomaly_scores_combined.csv"
     combined.to_csv(combined_path, index=False, encoding="utf-8-sig")
 
     report = build_comparison_report(
         all_frames,
         all_timings,
+        anchor_month=anchor,
         epoch=epoch,
         hid_dim=hid_dim,
         data_meta={
@@ -314,9 +459,21 @@ def run_compare(
             "feature_dim": int(data.x.shape[1]),
         },
     )
-    report_path = ML_OUTPUT_DIR / "pygod_model_comparison.json"
+    report_path = ml_dir / "pygod_model_comparison.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+    write_json(
+        meta_path,
+        {
+            "anchor_month": anchor,
+            "fingerprint": fingerprint,
+            "window_months": [str(m) for m in pyg_meta.get("window_months", [])],
+            "models_requested": models,
+            "models_present": sorted(list(all_frames.keys())),
+            "combined_csv": str(combined_path.relative_to(_REPO_ROOT)).replace("\\", "/"),
+            "report_json": str(report_path.relative_to(_REPO_ROOT)).replace("\\", "/"),
+        },
+    )
 
     if verbose:
         print("\n" + "=" * 70)
@@ -343,6 +500,12 @@ def run_compare(
 def main():
     parser = argparse.ArgumentParser(description="Compare PyGOD detectors on top7 graph")
     parser.add_argument(
+        "--anchor-month",
+        type=str,
+        default=None,
+        help="Anchor month YYYYMM. If omitted, use latest available anchor.",
+    )
+    parser.add_argument(
         "--models",
         nargs="+",
         choices=list(MODEL_SLUGS),
@@ -355,15 +518,22 @@ def main():
     parser.add_argument(
         "--reuse",
         action="store_true",
-        help="Skip training when entity_anomaly_scores_<model>.csv already exists",
+        help="Reuse cached model outputs only on strict fingerprint match.",
+    )
+    parser.add_argument(
+        "--all-anchors",
+        action="store_true",
+        help="Run compare for all compare-ready anchors.",
     )
     args = parser.parse_args()
     run_compare(
         models=args.models,
+        anchor_month=args.anchor_month,
         epoch=args.epoch,
         hid_dim=args.hid_dim,
         verbose=0 if args.quiet else 1,
         reuse=args.reuse,
+        all_anchors=args.all_anchors,
     )
 
 

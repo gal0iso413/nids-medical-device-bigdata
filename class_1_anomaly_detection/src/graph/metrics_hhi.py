@@ -29,7 +29,8 @@ import pandas as pd
 
 from ..ingest.keys import (
     HOSPITAL_SUPPLY_TYPE,
-    DISCARD_SUPPLY_CLASS,
+    BARCODE_PRICE_THRESHOLD,
+    filter_valid_supply_rows,
     normalize_supply_entity_id,
     normalize_receiver_entity_id,
     COL_SUPPLIER_SERIAL,
@@ -40,7 +41,6 @@ from ..ingest.keys import (
     COL_RECEIVER_NAME,
     COL_HOSPITAL_CODE,
     COL_SUPPLY_TYPE,
-    COL_SUPPLY_CLASS,
     COL_AMOUNT,
     COL_UNIT_PRICE,
     COL_SUPPLY_QTY,
@@ -53,13 +53,18 @@ HHI_MODERATE_THRESHOLD = 0.15
 
 
 def _resolve_amount(row: pd.Series) -> float:
-    """Return best available transaction amount for a row."""
+    """Return best available transaction amount for a row (barcode errors → 0)."""
     amt = row.get(COL_AMOUNT)
-    if pd.notna(amt) and float(amt) > 0:
+    if pd.notna(amt) and float(amt) > 0 and float(amt) < BARCODE_PRICE_THRESHOLD:
         return float(amt)
     price = row.get(COL_UNIT_PRICE)
     qty = row.get(COL_SUPPLY_QTY)
-    if pd.notna(price) and pd.notna(qty) and float(price) > 0:
+    if (
+        pd.notna(price)
+        and pd.notna(qty)
+        and float(price) > 0
+        and float(price) < BARCODE_PRICE_THRESHOLD
+    ):
         return float(price) * float(qty)
     return 0.0
 
@@ -107,9 +112,7 @@ def compute_hhi(
       - supplier_count: number of distinct suppliers
       - total_amount: total transaction amount for this hospital + item
     """
-    df = supply.copy()
-    if COL_SUPPLY_CLASS in df.columns:
-        df = df[df[COL_SUPPLY_CLASS] != DISCARD_SUPPLY_CLASS]
+    df = filter_valid_supply_rows(supply)
     if COL_SUPPLY_TYPE in df.columns:
         df = df[df[COL_SUPPLY_TYPE] == HOSPITAL_SUPPLY_TYPE]
 

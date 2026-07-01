@@ -8,6 +8,7 @@ Rules (from shared_data/DATA_LAYER.md):
   data sheet; detect the data sheet by name exclusion, not by hardcoded index.
 - Profile on every load; escalate via AgentSlacker on schema drift.
 - Price cap: 50M KRW applied to 공급단가 and 공급금액 at load time.
++ Barcode-error flag: rows with 공급단가/공급금액 > 1e12 are flagged, not capped.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-from .keys import PRICE_CAP_KRW, MASTER_KEYS, SUPPLY_KEYS
+from .keys import BARCODE_PRICE_THRESHOLD, MASTER_KEYS, SUPPLY_KEYS
 from .profile import detect_schema_drift, log_profile, profile_df
 
 # ---------------------------------------------------------------------------
@@ -79,14 +80,16 @@ def _discover_data_sheet(file: Path) -> str:
     return sheets[-1]
 
 
-def _cap_price_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply 50M KRW cap to price columns and flag capped rows."""
-    price_cols = [c for c in ["공급단가", "공급금액"] if c in df.columns]
-    for col in price_cols:
-        capped_mask = df[col].notna() & (df[col] > PRICE_CAP_KRW)
-        if capped_mask.any():
-            df[f"_{col}_capped"] = capped_mask
-            df[col] = df[col].clip(upper=PRICE_CAP_KRW)
+def _flag_barcode_prices(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Flag rows where 공급단가 or 공급금액 look like barcode scan errors (>1e12 KRW).
+    Does NOT modify price values — downstream metrics decide handling.
+    """
+    for col in ["공급단가", "공급금액"]:
+        if col in df.columns:
+            df[f"_{col}_barcode_error"] = df[col].notna() & (
+                df[col] > BARCODE_PRICE_THRESHOLD
+            )
     return df
 
 
@@ -152,7 +155,7 @@ def load_supply(
     validate_keys:
         Check that all 3 composite join key columns are present.
     cap_prices:
-        Apply 50M KRW cap to 공급단가 and 공급금액.
+        Deprecated alias — when True, flags barcode-error prices (no capping).
 
     Returns
     -------
@@ -171,7 +174,7 @@ def load_supply(
     df = pd.read_excel(SUPPLY_FILE, sheet_name=sheet, engine="openpyxl")
 
     if cap_prices:
-        df = _cap_price_columns(df)
+        df = _flag_barcode_prices(df)
 
     p = profile_df(df, f"top7_supply [{sheet}]")
     if verbose:

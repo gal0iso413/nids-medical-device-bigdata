@@ -6,10 +6,11 @@ computes overlap / correlation metrics, writes an evaluation report and an
 enriched entity score table with baseline flags.
 
 Run from repo root:
-  python -m class_1_anomaly_detection.src.experiments.run_step4_evaluation
+  python -m class_1_anomaly_detection.src.experiments.run_step4_evaluation --anchor-month 202605
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
@@ -27,17 +28,23 @@ from class_1_anomaly_detection.src.experiments.pygod_common import (
     ML_OUTPUT_DIR,
     MODEL_LABELS,
     MODEL_SLUGS,
-    OUTPUT_DIR,
+    list_available_anchor_months,
+    list_evaluation_ready_anchor_months,
+    normalize_anchor_month,
     rank_overlap,
+    read_json,
+    rolling_ml_dir,
+    rolling_output_dir,
     spearman_corr,
+    write_json,
 )
 
 TIMELAG_THRESHOLD_DAYS = 30
 TOP_K_VALUES = (10, 50, 100)
 
 
-def _load_combined_scores() -> pd.DataFrame:
-    path = ML_OUTPUT_DIR / "entity_anomaly_scores_combined.csv"
+def _load_combined_scores(anchor_month: str) -> pd.DataFrame:
+    path = rolling_ml_dir(anchor_month) / "entity_anomaly_scores_combined.csv"
     if not path.exists():
         raise FileNotFoundError(
             f"Missing {path.relative_to(_REPO_ROOT)} — run run_pygod_compare first."
@@ -47,9 +54,10 @@ def _load_combined_scores() -> pd.DataFrame:
     return df
 
 
-def _build_baseline_flags() -> pd.DataFrame:
+def _build_baseline_flags(anchor_month: str) -> pd.DataFrame:
     """Entity-level Phase 1 risk flags for evaluation (not a ground-truth label set)."""
-    nodes_path = OUTPUT_DIR / "network_nodes.csv"
+    out_dir = rolling_output_dir(anchor_month)
+    nodes_path = out_dir / "network_nodes.csv"
     if not nodes_path.exists():
         raise FileNotFoundError("network_nodes.csv missing — run run_graph_eda.py first.")
 
@@ -57,7 +65,7 @@ def _build_baseline_flags() -> pd.DataFrame:
     entities["entity_id"] = entities["entity_id"].astype(str)
     base = entities[["entity_id", "name", "node_type"]].copy()
 
-    bc_path = OUTPUT_DIR / "bc_per_entity.csv"
+    bc_path = out_dir / "bc_per_entity.csv"
     if bc_path.exists():
         bc = pd.read_csv(bc_path)
         bc["entity_id"] = bc["entity_id"].astype(str)
@@ -71,7 +79,7 @@ def _build_baseline_flags() -> pd.DataFrame:
         base["bc_score"] = 0.0
         base["bc_high_risk"] = False
 
-    pz_path = OUTPUT_DIR / "price_zscore_per_entity.csv"
+    pz_path = out_dir / "price_zscore_per_entity.csv"
     if pz_path.exists():
         pz = pd.read_csv(pz_path)
         pz["entity_id"] = pz["supplier_id"].astype(str)
@@ -92,7 +100,7 @@ def _build_baseline_flags() -> pd.DataFrame:
     else:
         base["price_high_risk"] = False
 
-    lag_path = OUTPUT_DIR / "timelag_per_entity.csv"
+    lag_path = out_dir / "timelag_per_entity.csv"
     if lag_path.exists():
         lag = pd.read_csv(lag_path)
         lag["entity_id"] = lag["supplier_id"].astype(str)
@@ -106,7 +114,7 @@ def _build_baseline_flags() -> pd.DataFrame:
     else:
         base["timelag_high"] = False
 
-    hhi_path = OUTPUT_DIR / "hhi_per_hospital_group.csv"
+    hhi_path = out_dir / "hhi_per_hospital_group.csv"
     if hhi_path.exists():
         hhi = pd.read_csv(hhi_path)
         hhi["dominant_supplier_id"] = hhi["dominant_supplier_id"].astype(str)
@@ -253,10 +261,18 @@ def _recommend_model(model_metrics: dict[str, dict[str, Any]]) -> dict[str, Any]
 
 
 def _markdown_report(report: dict[str, Any]) -> str:
+    window_months = report.get("window_months", []) or []
+    window_text = (
+        f"{window_months[0]} ~ {window_months[-1]}"
+        if isinstance(window_months, list) and window_months
+        else "n/a"
+    )
     lines = [
         "# Step 4 — GNN vs Phase 1 Evaluation",
         "",
         f"Generated: {report.get('generated_at', '')}",
+        f"Anchor month: {report.get('anchor_month', '')}",
+        f"Rolling window: {window_text}",
         "",
         "## Recommendation",
         "",
@@ -328,9 +344,19 @@ def _markdown_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def run_step4_evaluation(*, verbose: bool = True) -> dict[str, Any]:
-    combined = _load_combined_scores()
-    baseline = _build_baseline_flags()
+def run_step4_evaluation(
+    *,
+    anchor_month: str | None = None,
+    verbose: bool = True,
+) -> dict[str, Any]:
+    anchor = normalize_anchor_month(anchor_month)
+    combined = _load_combined_scores(anchor)
+    baseline = _build_baseline_flags(anchor)
+    window_months = []
+    manifest = read_json(rolling_output_dir(anchor) / "manifest.json") or {}
+    vals = manifest.get("window_months", [])
+    if isinstance(vals, list):
+        window_months = [str(v) for v in vals]
 
     available_slugs = [s for s in MODEL_SLUGS if f"{s}_score" in combined.columns]
     if not available_slugs:
@@ -364,14 +390,17 @@ def run_step4_evaluation(*, verbose: bool = True) -> dict[str, Any]:
     evaluated["recommended_model"] = recommendation["recommended_model"]
     evaluated["recommended_rank"] = evaluated[f"{rec_slug}_rank"]
 
-    ML_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    eval_csv = ML_OUTPUT_DIR / "entity_anomaly_scores_evaluated.csv"
+    ml_dir = rolling_ml_dir(anchor)
+    ml_dir.mkdir(parents=True, exist_ok=True)
+    eval_csv = ml_dir / "entity_anomaly_scores_evaluated.csv"
     evaluated.sort_values(f"{rec_slug}_rank").to_csv(
         eval_csv, index=False, encoding="utf-8-sig"
     )
 
     report: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "anchor_month": anchor,
+        "window_months": window_months,
         "entities": int(len(evaluated)),
         "models_evaluated": available_slugs,
         "baseline_summary": {
@@ -385,13 +414,13 @@ def run_step4_evaluation(*, verbose: bool = True) -> dict[str, Any]:
         "recommendation": recommendation,
         "outputs": {
             "evaluated_csv": str(eval_csv.relative_to(_REPO_ROOT)).replace("\\", "/"),
-            "json": "class_1_anomaly_detection/output/ml/step4_evaluation_report.json",
-            "markdown": "class_1_anomaly_detection/output/ml/step4_evaluation.md",
+            "json": str((ml_dir / "step4_evaluation_report.json").relative_to(_REPO_ROOT)).replace("\\", "/"),
+            "markdown": str((ml_dir / "step4_evaluation.md").relative_to(_REPO_ROOT)).replace("\\", "/"),
         },
     }
 
-    json_path = ML_OUTPUT_DIR / "step4_evaluation_report.json"
-    md_path = ML_OUTPUT_DIR / "step4_evaluation.md"
+    json_path = ml_dir / "step4_evaluation_report.json"
+    md_path = ml_dir / "step4_evaluation.md"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     md_path.write_text(_markdown_report(report), encoding="utf-8")
@@ -400,6 +429,9 @@ def run_step4_evaluation(*, verbose: bool = True) -> dict[str, Any]:
         print("=" * 70)
         print("  Step 4 evaluation complete")
         print("=" * 70)
+        print(f"  Anchor month          : {anchor}")
+        if window_months:
+            print(f"  Rolling window months : {window_months[0]} ~ {window_months[-1]}")
         print(f"  Entities evaluated     : {report['entities']:,}")
         print(f"  Phase-1 baseline_any   : {report['baseline_summary']['baseline_any_count']:,}")
         print(f"  Recommended model      : {recommendation['recommended_model']}")
@@ -415,5 +447,92 @@ def run_step4_evaluation(*, verbose: bool = True) -> dict[str, Any]:
     return report
 
 
+def run_step4_evaluation_all_anchors(*, verbose: bool = True) -> dict[str, Any]:
+    discovered = list_available_anchor_months()
+    ready = list_evaluation_ready_anchor_months()
+    skipped = [a for a in discovered if a not in set(ready)]
+    reports: dict[str, dict[str, Any]] = {}
+    failures: list[dict[str, str]] = []
+
+    if verbose:
+        print("=" * 70)
+        print("  Step 4 evaluation - all anchors")
+        print("=" * 70)
+        if discovered:
+            print(f"  Discovered anchors : {len(discovered)} ({discovered[0]} ~ {discovered[-1]})")
+        else:
+            print("  Discovered anchors : 0")
+        print(f"  Evaluation-ready   : {len(ready)}")
+        print(f"  Skipped            : {len(skipped)}")
+
+    for anchor in ready:
+        try:
+            reports[anchor] = run_step4_evaluation(anchor_month=anchor, verbose=verbose)
+        except Exception as exc:
+            failures.append({"anchor_month": anchor, "error": str(exc)})
+            if verbose:
+                print(f"  [anchor {anchor}] failed: {exc}")
+
+    compact = []
+    for anchor, report in reports.items():
+        rec = report.get("recommendation", {})
+        compact.append(
+            {
+                "anchor_month": anchor,
+                "window_months": report.get("window_months", []),
+                "entities": report.get("entities"),
+                "recommended_slug": rec.get("recommended_slug"),
+                "recommended_model": rec.get("recommended_model"),
+                "recommendation_score": rec.get("recommendation_score"),
+                "output_report_json": report.get("outputs", {}).get("json"),
+            }
+        )
+
+    summary: dict[str, Any] = {
+        "mode": "all_anchors",
+        "discovered_anchors": discovered,
+        "evaluation_ready_anchors": ready,
+        "skipped_missing_inputs": skipped,
+        "success_count": len(reports),
+        "failure_count": len(failures),
+        "failures": failures,
+        "anchors": compact,
+    }
+    summary_path = ML_OUTPUT_DIR / "step4_evaluation_all_anchors_summary.json"
+    write_json(summary_path, summary)
+    if verbose:
+        print("\n" + "=" * 70)
+        print("  All-anchor Step 4 summary")
+        print("=" * 70)
+        print(f"  Successes: {len(reports)}")
+        print(f"  Failures : {len(failures)}")
+        print(f"  Summary  : {summary_path.relative_to(_REPO_ROOT)}")
+        print("=" * 70)
+    return summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Step 4 evaluation for one anchor month")
+    parser.add_argument(
+        "--anchor-month",
+        type=str,
+        default=None,
+        help="Anchor month YYYYMM. If omitted, use latest available anchor.",
+    )
+    parser.add_argument(
+        "--all-anchors",
+        action="store_true",
+        help="Evaluate all evaluation-ready anchors.",
+    )
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args()
+    if args.all_anchors and args.anchor_month is not None:
+        parser.error("Use either --anchor-month or --all-anchors, not both.")
+    if args.all_anchors:
+        run_step4_evaluation_all_anchors(verbose=not args.quiet)
+        return
+    run_step4_evaluation(anchor_month=args.anchor_month, verbose=not args.quiet)
+
+
 if __name__ == "__main__":
-    run_step4_evaluation(verbose=True)
+    main()

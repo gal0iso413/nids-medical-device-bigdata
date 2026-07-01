@@ -24,12 +24,12 @@ import numpy as np
 import pandas as pd
 
 from ..ingest.keys import (
-    DISCARD_SUPPLY_CLASS,
+    BARCODE_PRICE_THRESHOLD,
+    filter_valid_supply_rows,
     normalize_supply_entity_id,
     COL_SUPPLIER_SERIAL,
     COL_SUPPLIER_REG,
     COL_SUPPLIER_NAME,
-    COL_SUPPLY_CLASS,
     COL_UNIT_PRICE,
     COL_ITEM_NAME,
     COL_ITEM_GROUP,
@@ -81,16 +81,14 @@ def compute_price_zscore(
             median_zscore, max_zscore,
           - high_risk: True if entity is in top-5% by flag_rate
     """
-    if COL_SUPPLY_CLASS in supply.columns:
-        df = supply[supply[COL_SUPPLY_CLASS] != DISCARD_SUPPLY_CLASS].copy()
-    else:
-        df = supply.copy()
+    df = filter_valid_supply_rows(supply)
 
-    # Require a valid positive unit price
+    # Require a valid positive unit price (exclude barcode errors)
     if COL_UNIT_PRICE not in df.columns:
         raise KeyError(f"Column '{COL_UNIT_PRICE}' not found in supply DataFrame.")
 
-    df = df[df[COL_UNIT_PRICE].notna() & (df[COL_UNIT_PRICE] > 0)].copy()
+    prices = pd.to_numeric(df[COL_UNIT_PRICE], errors="coerce")
+    df = df[prices.notna() & (prices > 0) & (prices < BARCODE_PRICE_THRESHOLD)].copy()
 
     # Resolve entity IDs
     df["supplier_id"] = df.apply(
