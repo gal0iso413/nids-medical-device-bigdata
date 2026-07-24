@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>우리 기업군 동향 · 혁신 시안</title>
+  <link rel="stylesheet" href="./lab.css">
+  <link rel="stylesheet" href="./class3.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+  <header class="lab-header">
+    <a class="lab-brand" href="./">
+      <span class="lab-mark">NIDS</span>
+      <div class="lab-brand-text">
+        <p class="lab-eyebrow">혁신 시안 · 자리 브리핑</p>
+        <h1>우리 기업군 동향</h1>
+      </div>
+    </a>
+    <div class="lab-header-util">
+      <nav class="lab-nav" aria-label="모델 선택">
+        <a href="./class1.html">유통 관계</a>
+        <a href="./class3.html" aria-current="page">기업군 동향</a>
+        <a href="../class_3/">기존안</a>
+      </nav>
+      <span class="lab-badge">간담회용 예시 데이터</span>
+    </div>
+  </header>
+
+  <main id="main" class="lab-main">
+    <section class="scope-line">
+      <strong>개별 업체 정보는 공개하지 않습니다.</strong>
+      <span>회사명을 입력하지 않습니다. 모든 수치는 생성 예시입니다.</span>
+    </section>
+
+    <ol class="progress-rail" id="progressRail" aria-label="진행 단계">
+      <li><button type="button" data-phase="profile" aria-current="step"><span class="step-num">01</span><span class="step-label">비교 기준</span></button></li>
+      <li><button type="button" data-phase="report" disabled><span class="step-num">02</span><span class="step-label">자리 리포트</span></button></li>
+      <li><button type="button" data-phase="depth" disabled><span class="step-num">03</span><span class="step-label">더 살펴보기</span></button></li>
+    </ol>
+
+    <section id="phase-profile" class="stage stage-enter">
+      <header class="stage-head">
+        <p class="lab-eyebrow">01 · 비교 기준</p>
+        <h2 class="display">어떤 기업군과<br>비교할까요?</h2>
+        <p class="lead">회사명 없이 업태·권역·품목만으로 비슷한 기업군을 만듭니다.</p>
+      </header>
+      <ol class="wizard-ribbon" id="wizardRibbon">
+        <li class="wizard-cell is-active">
+          <label for="businessType"><span class="wizard-num">1</span> 업태</label>
+          <select id="businessType"></select>
+        </li>
+        <li class="wizard-cell">
+          <label for="region"><span class="wizard-num">2</span> 주 활동 권역</label>
+          <select id="region"></select>
+        </li>
+        <li class="wizard-cell">
+          <label for="productGroup"><span class="wizard-num">3</span> 관심 품목군</label>
+          <select id="productGroup"></select>
+        </li>
+      </ol>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="applyProfile">리포트 생성</button>
+      </div>
+      <p class="field-help" style="margin-top:16px">선택 조건은 개인 기업을 식별하지 않는 비교군을 만드는 데만 사용합니다.</p>
+    </section>
+
+    <div id="resultStack" hidden>
+      <section id="phase-portrait" class="peer-portrait panel section-gap">
+        <p class="lab-eyebrow">비슷한 기업군</p>
+        <h2 id="portrait-heading" class="display">기업군 유형</h2>
+        <p id="portraitDescription" class="lead"></p>
+        <ul id="portraitTraits" class="trait-row"></ul>
+        <p id="portraitMeta" class="meta"></p>
+      </section>
+
+      <section id="phase-report" class="report-spread section-gap">
+        <header class="stage-head">
+          <p class="lab-eyebrow">02 · 우리 자리 리포트</p>
+          <h2 class="title">우리 자리 리포트</h2>
+          <p id="reportSubtitle" class="meta"></p>
+        </header>
+
+        <div class="report-grid">
+          <div class="panel">
+            <h3 class="block-title">위치</h3>
+            <p id="positionSentence" class="block-copy"></p>
+            <div id="reportMetrics" class="metric-strip metric-strip--2"></div>
+          </div>
+          <div class="panel">
+            <h3 class="block-title">변화</h3>
+            <p id="changeSentence" class="block-copy"></p>
+            <svg id="trendChart" class="trend-svg" viewBox="0 0 900 280" role="img" aria-label="월별 거래 활동 비교"></svg>
+            <p class="meta">실선: 선택 조건 평균 · 점선: 같은 업태·권역 중앙값</p>
+          </div>
+        </div>
+
+        <div class="section-gap">
+          <h3 class="block-title">다음에 볼 것</h3>
+          <div id="reviewQuestions" class="question-boards"></div>
+        </div>
+
+        <p id="reportLimit" class="report-limit"></p>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="backToProfile">비교 기준 다시 고르기</button>
+          <button type="button" class="btn btn-primary" id="openDepth">품목·기업군 더 살펴보기</button>
+        </div>
+      </section>
+
+      <section id="phase-depth" class="section-gap" hidden>
+        <header class="stage-head">
+          <p class="lab-eyebrow">03 · 더 살펴보기</p>
+          <h2 class="title">필요한 부분만 열어보세요</h2>
+        </header>
+        <div class="depth-panels">
+          <details class="depth-panel" id="depth-map">
+            <summary>품목 검토 지도</summary>
+            <div class="depth-body">
+              <p class="meta">검토할 품목의 최근 변화와 공급자 집중도입니다. 투자·사업 보장이 아닙니다.</p>
+              <svg id="opportunityChart" class="opp-svg" viewBox="0 0 760 430" role="img" aria-label="품목군 성장과 집중도"></svg>
+              <div id="opportunityTable" class="table-wrap"></div>
+            </div>
+          </details>
+          <details class="depth-panel" id="depth-groups">
+            <summary>비슷한 기업군 더 보기</summary>
+            <div class="depth-body" id="similarGroups"></div>
+          </details>
+          <details class="depth-panel" id="depth-privacy">
+            <summary>분석 기준·개인정보 보호</summary>
+            <div class="depth-body">
+              <p id="privacyMessage"></p>
+              <ul id="hiddenFieldList"></ul>
+              <ul id="limitationList"></ul>
+            </div>
+          </details>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="backToReport">리포트로 돌아가기</button>
+        </div>
+      </section>
+    </div>
+
+    <section id="suppressedPanel" class="panel empty-state" hidden>
+      <h2 class="title">선택 조건으로 비교군을 표시할 수 없습니다</h2>
+      <p class="lead">기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 넓히거나 업태 조건을 완화해 주세요.</p>
+      <button type="button" class="btn btn-secondary" id="resetSuppressed">비교 기준 다시 고르기</button>
+    </section>
+  </main>
+
+  <footer class="lab-footer">
+    <a href="./">혁신 시안 랩</a>
+    <span>Class 3 · synthetic cohort scenarios</span>
+  </footer>
+  <script src="./class3.js" defer></script>
+</body>
+</html>

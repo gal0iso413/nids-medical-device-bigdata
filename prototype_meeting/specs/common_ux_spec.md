@@ -52,10 +52,15 @@ Every model page includes:
 - Supporting text: at least 14 px; never use it for essential instructions.
 - Interactive targets: at least 44 by 44 px.
 - Text contrast: at least 4.5:1.
-- Use a restrained blue/teal public-service palette.
+- Use a restrained blue/teal public-service palette aligned with the NIDS
+  institutional site (navy `#003675`, corporate blue, restrained green accent).
+- Load **Pretendard GOV** (or equivalent) for Korean UI; do not rely on system
+  fallback alone.
 - Red is reserved for warnings and must be paired with text/icons.
 - Avoid gradients, animation, dense decorative cards, and chart-only meaning.
 - Use NIDS official assets only after brand-owner confirmation.
+- Prefer conclusion-first result blocks and a compact three-step flow strip
+  (`위치 확인 → 변화 이해 → 확인할 사항`) on model pages.
 
 ## Interaction rules
 
@@ -81,7 +86,9 @@ Every model page includes:
 
 - `service-header`: model title, model switcher, prototype badge
 - `scope-banner`: data status, period, and limitation
-- `stepper`: small guided sequence for multi-step tasks
+- `stepper`: small guided sequence for multi-step tasks (profile picker on Class 3;
+  page-level flow strip on Class 1/3)
+- `conclusion-card`: plain-language summary before detailed charts
 - `metric`: label, value, comparison, and definition
 - `insight`: observed fact, interpretation, next question
 - `method-panel`: plain explanation plus optional technical detail

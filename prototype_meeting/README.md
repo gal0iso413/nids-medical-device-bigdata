@@ -36,10 +36,11 @@ python prototype_meeting/class_3/build_mock_data.py
 
 ## Package map
 
-- `index.html`: meeting landing page and model selector
-- `shared/`: common design tokens and landing-page behavior
-- `class_1/`: distribution-network review prototype
-- `class_3/`: anonymous cohort dashboard prototype
+- `index.html`: meeting landing page and model selector (혁신 시안 / 기존안)
+- `innovation/`: bold redesign lab (`index.html` hub, `class1.html`, `class3.html`)
+- `shared/`: common design tokens for control pages
+- `class_1/`: distribution-network review control prototype
+- `class_3/`: anonymous cohort dashboard control prototype
 - `research/`: sourced platform and feasibility findings
 - `specs/`: product, UX, analytics, and privacy specifications
 - `meeting/`: facilitator guide and feedback form

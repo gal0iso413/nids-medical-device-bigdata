@@ -11,16 +11,28 @@
   <header class="service-header">
     <div class="brand">
       <a class="brand-mark" href="../" aria-label="프로토타입 홈">NIDS</a>
-      <div>
-        <p class="eyebrow">의료기기 유통 데이터 활용</p>
-        <h1>Class 3 우리 기업군 동향</h1>
+      <div class="brand-text">
+        <p class="eyebrow">한국의료기기안전정보원</p>
+        <h1>우리 기업군 동향</h1>
       </div>
     </div>
-    <nav class="model-nav" aria-label="프로토타입 모델 선택">
-      <a href="../class_1/">유통 관계 확인</a>
-      <a href="./" aria-current="page">우리 기업군 동향</a>
-    </nav>
+    <div class="header-util">
+      <nav class="model-nav" aria-label="프로토타입 모델 선택">
+        <a href="../class_1/">유통 관계 확인</a>
+        <a href="./" aria-current="page">우리 기업군 동향</a>
+        <a href="../innovation/class3.html">혁신 시안</a>
+      </nav>
+      <span class="status-badge">간담회용 예시 데이터</span>
+    </div>
   </header>
+
+  <nav class="flow-steps" id="flowSteps" aria-label="진행 안내">
+    <span class="flow-step flow-step--current" data-step="orient">위치 확인</span>
+    <span class="flow-step-sep" aria-hidden="true">→</span>
+    <span class="flow-step" data-step="change">변화 이해</span>
+    <span class="flow-step-sep" aria-hidden="true">→</span>
+    <span class="flow-step" data-step="check">확인할 사항</span>
+  </nav>
 
   <main id="main" class="page-main">
     <section class="page-title">
@@ -29,7 +41,6 @@
         <h2>비슷한 기업군 속 위치와 시장 변화를 봅니다</h2>
         <p>업태와 관심 품목을 선택하면 익명 기업군 비교, 품목 변화와 확인할 질문을 제공합니다.</p>
       </div>
-      <span class="status-badge">간담회용 예시 데이터</span>
     </section>
 
     <section class="scope-banner" aria-label="데이터 범위 안내">
@@ -40,10 +51,10 @@
     <div class="layout">
       <aside class="control-panel" aria-labelledby="profile-heading">
         <h3 id="profile-heading">비교할 기업 프로필</h3>
-        <ol class="profile-steps" aria-label="프로필 선택 단계">
-          <li class="active">업태</li>
-          <li class="active">권역</li>
-          <li class="active">품목</li>
+        <ol class="profile-steps" id="profileSteps" aria-label="프로필 선택 단계">
+          <li data-step="businessType">업태</li>
+          <li data-step="region">권역</li>
+          <li data-step="productGroup">품목</li>
         </ol>
 
         <div class="field">
@@ -62,7 +73,7 @@
           <p class="field-help">의료기기 분류 체계(일반·체외진단·디지털)의 세부 품목을 선택합니다.</p>
         </div>
 
-        <button id="applyProfile" class="primary-action" type="button" style="width:100%">
+        <button id="applyProfile" class="primary-action apply-profile-btn" type="button">
           비슷한 기업군 보기
         </button>
 
@@ -72,20 +83,26 @@
       </aside>
 
       <div class="content-stack">
+        <section id="conclusionCard" class="conclusion-card conclusion-card--accent" aria-live="polite">
+          <p class="eyebrow">결론부터</p>
+          <h3 id="conclusionHeadline">프로필을 선택한 뒤 비교 결과를 확인하세요</h3>
+          <p id="conclusionBody">왼쪽에서 업태·권역·품목을 고르고 「비슷한 기업군 보기」를 누르면, 기업군 위치와 변화 요약이 먼저 표시됩니다.</p>
+        </section>
+
         <section id="cohortSummary" class="cohort-summary" aria-live="polite"></section>
 
         <section id="resultPanel" class="panel" aria-labelledby="result-heading">
           <h3 id="result-heading">기업군 분석 결과</h3>
           <div class="tab-list" role="tablist" aria-label="기업군 분석 결과 메뉴">
             <button id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">한눈에 보기</button>
+            <button id="tab-questions" role="tab" aria-selected="false" aria-controls="panel-questions">확인할 사항</button>
             <button id="tab-opportunity" role="tab" aria-selected="false" aria-controls="panel-opportunity">품목 변화 지도</button>
             <button id="tab-groups" role="tab" aria-selected="false" aria-controls="panel-groups">비슷한 기업군</button>
-            <button id="tab-questions" role="tab" aria-selected="false" aria-controls="panel-questions">확인할 사항</button>
           </div>
 
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
             <div id="cohortMetrics" class="metric-grid"></div>
-            <div class="chart chart-full" style="margin-top:14px">
+            <div class="chart chart-full chart-spaced">
               <h4>월별 거래 활동 변화</h4>
               <div class="chart-legend-box chart-legend-inline">
                 <p><strong>● 내가 고른 조건 평균</strong> — 업태·권역·품목을 모두 맞춘 기업군의 월별 거래 보고 건수 평균</p>
@@ -103,6 +120,18 @@
             </div>
           </div>
 
+          <div id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" hidden>
+            <h4>이 결과로 무엇을 확인할까요?</h4>
+            <p class="panel-description">표시된 변화와 연결된 질문입니다. 사업 결과를 보장하는 권고가 아닙니다.</p>
+            <div id="reviewQuestions" class="insight-list"></div>
+            <details class="method-panel method-panel-spaced">
+              <summary>질문은 어떻게 정해지나요?</summary>
+              <div class="method-content">
+                <p>선택한 품목의 성장·집중도, 권역별 비교군 크기, 프로필 정의 적합성 등 <strong>집계 결과에서 읽히는 패턴</strong>에 맞춰 규칙 기반으로 생성합니다. LLM이 임의로 권고를 만들지 않습니다.</p>
+              </div>
+            </details>
+          </div>
+
           <div id="panel-opportunity" role="tabpanel" aria-labelledby="tab-opportunity" hidden>
             <h4>최근 변화와 공급자 집중도</h4>
             <p class="panel-description">오른쪽일수록 최근 활동이 증가했고, 위쪽일수록 소수 공급자 비중이 큰 품목군입니다.</p>
@@ -110,30 +139,18 @@
               <svg id="opportunityChart" viewBox="0 0 760 430" role="img" aria-label="품목군별 최근 성장률과 공급자 집중도 비교"></svg>
               <p class="chart-caption">가로축: 최근 거래 활동 증감률 구간 · 세로축: 공급자 집중도 구간 · 생성 예시 데이터</p>
             </div>
-            <div id="opportunityTable" class="table-wrap" style="margin-top:14px"></div>
+            <div id="opportunityTable" class="table-wrap table-spaced"></div>
           </div>
 
           <div id="panel-groups" role="tabpanel" aria-labelledby="tab-groups" hidden>
             <h4>선택 프로필과 가까운 기업군 유형</h4>
             <p class="panel-description">알고리즘 번호 대신 어떤 특성이 함께 나타나는지 설명합니다.</p>
             <div id="similarGroups" class="insight-list"></div>
-            <details class="method-panel" style="margin-top:14px">
+            <details class="method-panel method-panel-spaced">
               <summary>이 유형은 어떻게 만들어지나요?</summary>
               <div class="method-content">
                 <p><strong>실제 구현(계획):</strong> 각 기업의 품목 구성 비율, 거래처 유형 비율, 권역 집중도, 월별 변동성 등을 표준화한 뒤 군집 분석으로 유사 그룹을 찾습니다. 최소 군집 크기와 월별 안정성을 검증한 뒤에만 공개합니다.</p>
                 <p><strong>현재 시안:</strong> 위 방법을 설명하기 위한 예시 이름·특징입니다. 생성 데이터이며 실제 군집 결과가 아닙니다.</p>
-              </div>
-            </details>
-          </div>
-
-          <div id="panel-questions" role="tabpanel" aria-labelledby="tab-questions" hidden>
-            <h4>이 결과로 무엇을 확인할까요?</h4>
-            <p class="panel-description">표시된 변화와 연결된 질문입니다. 사업 결과를 보장하는 권고가 아닙니다.</p>
-            <div id="reviewQuestions" class="insight-list"></div>
-            <details class="method-panel" style="margin-top:14px">
-              <summary>질문은 어떻게 정해지나요?</summary>
-              <div class="method-content">
-                <p>선택한 품목의 성장·집중도, 권역별 비교군 크기, 프로필 정의 적합성 등 <strong>집계 결과에서 읽히는 패턴</strong>에 맞춰 규칙 기반으로 생성합니다. LLM이 임의로 권고를 만들지 않습니다.</p>
               </div>
             </details>
           </div>

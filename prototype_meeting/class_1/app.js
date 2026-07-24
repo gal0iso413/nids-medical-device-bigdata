@@ -14,17 +14,15 @@ const COLORS = {
   의료기관: "#2f7d4a",
 };
 
-const LABEL_PLACEMENT = {
-  공급원: { anchor: "end", dx: -10 },
-  유통사: { anchor: "middle", dy: -12, above: true },
-  의료기관: { anchor: "start", dx: 10 },
-};
+const GRAPH_WIDTH = 980;
+const LABEL_FONT_SIZE = 13;
+const LABEL_LINE_HEIGHT = 18;
+const LABEL_PAD = 6;
 
-const X_BY_TYPE = {
-  제조사: 105,
-  수입사: 105,
-  유통사: 445,
-  의료기관: 790,
+const X_BY_LANE = {
+  공급원: 150,
+  유통사: 490,
+  의료기관: 830,
 };
 
 const elements = {
@@ -45,6 +43,12 @@ const elements = {
   evidenceGrid: document.getElementById("evidenceGrid"),
   limitationList: document.getElementById("limitationList"),
   showMyCompanyButton: document.getElementById("showMyCompanyButton"),
+  conclusionHeadline: document.getElementById("conclusionHeadline"),
+  conclusionBody: document.getElementById("conclusionBody"),
+  flowSteps: document.getElementById("flowSteps"),
+  sectionOrient: document.getElementById("section-orient"),
+  sectionChange: document.getElementById("section-change"),
+  sectionCheck: document.getElementById("section-check"),
 };
 
 function gnnScore(node) {
@@ -158,6 +162,70 @@ function renderAnchors() {
   elements.anchor.value = state.anchor;
 }
 
+function renderConclusion() {
+  const node = nodeMap().get(state.focalId);
+  const edges = incidentEdges();
+  const current = edges.reduce(
+    (total, edge) => total + aggregateEdge(edge).count,
+    0,
+  );
+  const previous = edges.reduce(
+    (total, edge) => total + aggregateEdge(edge, previousMonths()).count,
+    0,
+  );
+  const countChange = percentChange(current, previous);
+  const reviewCount = state.data.reviewOrder.filter((id) => {
+    const candidate = nodeMap().get(id);
+    return candidate && candidate.status !== "정상";
+  }).length;
+
+  elements.conclusionHeadline.textContent =
+    `${node.name}은(는) ${node.type}으로, ${node.status} 상태입니다`;
+  elements.conclusionBody.innerHTML =
+    `<strong>위치:</strong> ${selectedMonths()[0]}~${selectedMonths().at(-1)} 기준 ${state.depth}단계 연결망에 있습니다. ` +
+    `<strong>변화:</strong> 거래 보고는 ${changeLabel(countChange)}. ` +
+    `<strong>확인:</strong> 우선 살펴볼 업체 ${reviewCount}곳이 있습니다. ${node.reviewQuestion}`;
+}
+
+function updateFlowSteps() {
+  if (!elements.flowSteps) return;
+  const sections = [
+    { id: "orient", el: elements.sectionOrient },
+    { id: "change", el: elements.sectionChange },
+    { id: "check", el: elements.sectionCheck },
+  ];
+  const stickyOffset = elements.flowSteps.getBoundingClientRect().height + 12;
+  const viewportMid = stickyOffset + window.innerHeight * 0.22;
+  let active = "orient";
+  sections.forEach((section) => {
+    if (!section.el) return;
+    const rect = section.el.getBoundingClientRect();
+    if (rect.top <= viewportMid) active = section.id;
+  });
+  elements.flowSteps.querySelectorAll(".flow-step").forEach((step) => {
+    const stepId = step.dataset.step;
+    step.classList.remove("flow-step--current", "flow-step--done");
+    step.removeAttribute("aria-current");
+    const order = ["orient", "change", "check"];
+    const activeIndex = order.indexOf(active);
+    const stepIndex = order.indexOf(stepId);
+    if (stepIndex === activeIndex) {
+      step.classList.add("flow-step--current");
+      step.setAttribute("aria-current", "step");
+    } else if (stepIndex < activeIndex) {
+      step.classList.add("flow-step--done");
+    }
+  });
+}
+
+function scrollToStep(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  const stickyHeight = elements.flowSteps?.getBoundingClientRect().height || 0;
+  const top = window.scrollY + target.getBoundingClientRect().top - stickyHeight - 12;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
 function renderMetrics() {
   const nodes = nodeMap();
   const edges = incidentEdges();
@@ -214,6 +282,19 @@ function nodeRadius(node) {
   return 10 + Math.min(16, Math.sqrt(node.degree) * 3);
 }
 
+function estimateLabelWidth(text) {
+  let width = 0;
+  for (const char of text) {
+    width += /[A-Za-z0-9 .·-]/.test(char) ? LABEL_FONT_SIZE * 0.58 : LABEL_FONT_SIZE;
+  }
+  return Math.ceil(width);
+}
+
+function shortenLabel(name, maxChars) {
+  if (name.length <= maxChars) return name;
+  return `${name.slice(0, Math.max(1, maxChars - 1))}…`;
+}
+
 function graphPositions(nodes) {
   const grouped = new Map();
   nodes.forEach((node) => {
@@ -222,26 +303,93 @@ function graphPositions(nodes) {
     grouped.get(lane).push(node);
   });
 
-  const minGap = 34;
+  const minGap = 52;
   const laneCounts = [...grouped.values()].map((items) => items.length);
   const maxCount = Math.max(...laneCounts, 1);
-  const graphHeight = Math.max(560, maxCount * minGap + 90);
+  const graphHeight = Math.max(560, maxCount * minGap + 100);
 
   const positions = new Map();
   grouped.forEach((items, lane) => {
     const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, "ko"));
-    const laneHeight = Math.max(graphHeight - 80, sorted.length * minGap);
+    const laneHeight = Math.max(graphHeight - 90, sorted.length * minGap);
     const step = laneHeight / Math.max(sorted.length, 1);
     sorted.forEach((node, index) => {
       positions.set(node.id, {
-        x: lane === "공급원" ? 105 : X_BY_TYPE[node.type] || 445,
-        y: 40 + step * index + step / 2,
+        x: X_BY_LANE[lane] || 490,
+        y: 48 + step * index + step / 2,
         lane,
+        laneIndex: index,
+        laneCount: sorted.length,
         graphHeight,
       });
     });
   });
   return positions;
+}
+
+function labelSideFor(lane, laneIndex) {
+  if (lane === "공급원") return "left";
+  if (lane === "의료기관") return "right";
+  return laneIndex % 2 === 0 ? "left" : "right";
+}
+
+function buildLabelLayout(nodes, positions) {
+  const dense = nodes.length > 18;
+  const candidates = nodes.map((node) => {
+    const position = positions.get(node.id);
+    const radius = nodeRadius(node);
+    const selected = node.id === state.focalId;
+    const maxChars = selected ? 14 : dense ? 7 : 10;
+    const displayName = shortenLabel(node.name, maxChars);
+    const side = labelSideFor(position.lane, position.laneIndex);
+    const width = estimateLabelWidth(displayName);
+    const x =
+      side === "left"
+        ? position.x - radius - LABEL_PAD
+        : position.x + radius + LABEL_PAD;
+    const y = position.y + 4;
+    return {
+      id: node.id,
+      name: node.name,
+      displayName,
+      selected,
+      side,
+      x,
+      y,
+      width,
+      height: LABEL_LINE_HEIGHT,
+      top: y - LABEL_LINE_HEIGHT * 0.7,
+      bottom: y + LABEL_LINE_HEIGHT * 0.45,
+      left: side === "left" ? x - width : x,
+      right: side === "left" ? x : x + width,
+    };
+  });
+
+  const byLane = new Map();
+  candidates.forEach((label) => {
+    const lane = positions.get(label.id).lane;
+    if (!byLane.has(lane)) byLane.set(lane, []);
+    byLane.get(lane).push(label);
+  });
+
+  byLane.forEach((labels) => {
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i += 1) {
+      const prev = labels[i - 1];
+      const current = labels[i];
+      const sameSide = prev.side === current.side;
+      const horizontalOverlap =
+        current.left < prev.right + 4 && current.right > prev.left - 4;
+      if (sameSide && horizontalOverlap && current.top < prev.bottom + 4) {
+        const shift = prev.bottom + 4 - current.top;
+        current.y += shift;
+        current.top += shift;
+        current.bottom += shift;
+      }
+    }
+  });
+
+  return new Map(candidates.map((label) => [label.id, label]));
 }
 
 function svgElement(name, attributes = {}) {
@@ -262,8 +410,12 @@ function selectNode(nodeId) {
 function renderNetwork() {
   const graph = subgraph();
   const positions = graphPositions(graph.nodes);
-  const graphHeight = [...positions.values()][0]?.graphHeight || 560;
-  elements.svg.setAttribute("viewBox", `0 0 900 ${graphHeight}`);
+  const labels = buildLabelLayout(graph.nodes, positions);
+  const graphHeight = Math.max(
+    [...positions.values()][0]?.graphHeight || 560,
+    ...[...labels.values()].map((label) => label.bottom + 28),
+  );
+  elements.svg.setAttribute("viewBox", `0 0 ${GRAPH_WIDTH} ${graphHeight}`);
   elements.svg.style.height = `${graphHeight}px`;
 
   const maxMeasure = Math.max(
@@ -319,12 +471,11 @@ function renderNetwork() {
   const nodeLayer = svgElement("g");
   graph.nodes.forEach((node) => {
     const position = positions.get(node.id);
-    const lane = position.lane || graphLane(node);
-    const placement = LABEL_PLACEMENT[lane] || LABEL_PLACEMENT.유통사;
+    const labelInfo = labels.get(node.id);
     const group = svgElement("g", {
       role: "button",
       tabindex: "0",
-      "aria-label": `${node.name}, ${node.type}, GNN 점수 ${gnnScore(node)}`,
+      "aria-label": `${node.name}, ${node.type}, 관계 AI 점수 ${gnnScore(node)}`,
       style: "cursor:pointer",
     });
     const radius = nodeRadius(node);
@@ -337,24 +488,21 @@ function renderNetwork() {
       stroke: selected ? "#12345b" : node.status === "우선 확인" ? "#a51d2d" : "#ffffff",
       "stroke-width": selected ? 5 : node.status === "우선 확인" ? 4 : 2,
     });
-    const labelX =
-      placement.anchor === "end"
-        ? position.x - radius - (placement.dx || 8)
-        : placement.anchor === "start"
-          ? position.x + radius + (placement.dx || 8)
-          : position.x;
-    const labelY = placement.above
-      ? position.y - radius - (placement.dy || 10)
-      : position.y + radius + 16;
     const label = svgElement("text", {
-      x: labelX,
-      y: labelY,
-      "text-anchor": placement.anchor || "middle",
+      x: labelInfo.x,
+      y: labelInfo.y,
+      "text-anchor": labelInfo.side === "left" ? "end" : "start",
       fill: "#17212b",
-      "font-size": 13,
+      "font-size": LABEL_FONT_SIZE,
       "font-weight": selected ? 800 : 650,
+      class: selected ? "entity-label entity-label--focal" : "entity-label",
     });
-    label.textContent = node.name;
+    if (labelInfo.displayName !== node.name) {
+      const title = svgElement("title");
+      title.textContent = node.name;
+      label.append(title);
+    }
+    label.append(document.createTextNode(labelInfo.displayName));
     group.append(circle, label);
     group.addEventListener("click", () => selectNode(node.id));
     group.addEventListener("keydown", (event) => {
@@ -383,9 +531,9 @@ function renderDetail() {
     <ul class="detail-list">
       <li><span>업체 구분</span><strong>${node.type}</strong></li>
       <li><span>전체 연결 수</span><strong>${node.degree}개</strong></li>
-      <li><span>GNN 점수</span><strong>${score} / 100</strong></li>
+      <li><span>관계 AI 점수</span><strong>${score} / 100</strong></li>
     </ul>
-    <p class="field-help">GNN 점수만으로 순위를 매깁니다. 속성별 기여 문장은 제공되지 않습니다.</p>
+    <p class="field-help">관계 AI 점수만으로 순위를 매깁니다. 속성별 기여 문장은 제공되지 않습니다.</p>
   `;
 }
 
@@ -457,7 +605,7 @@ function renderEvidence() {
       <p>${node.observedFact}</p>
     </article>
     <article class="evidence evidence-model">
-      <h4>2. GNN 해석</h4>
+      <h4>2. 관계 구조 AI 해석</h4>
       <p>${node.modelInterpretation}</p>
     </article>
     <article class="evidence evidence-question">
@@ -468,12 +616,14 @@ function renderEvidence() {
 }
 
 function renderAll() {
+  renderConclusion();
   renderMetrics();
   renderNetwork();
   renderDetail();
   renderRelationships();
   renderReviewTable();
   renderEvidence();
+  updateFlowSteps();
 }
 
 function bindEvents() {
@@ -510,6 +660,14 @@ function bindEvents() {
   if (myCompanyLabel) {
     elements.showMyCompanyButton.textContent = `내 업체 보기 (${myCompanyLabel})`;
   }
+  elements.flowSteps?.querySelectorAll(".flow-step").forEach((step) => {
+    step.addEventListener("click", () => {
+      scrollToStep(step.dataset.target);
+      window.setTimeout(updateFlowSteps, 320);
+    });
+  });
+  window.addEventListener("scroll", updateFlowSteps, { passive: true });
+  window.addEventListener("resize", updateFlowSteps, { passive: true });
 }
 
 async function init() {

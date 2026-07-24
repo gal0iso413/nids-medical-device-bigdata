@@ -5,6 +5,7 @@ const state = {
     region: "수도권",
     productGroup: "B2. 임상화학검사기기",
   },
+  profileApplied: false,
 };
 
 const elements = {
@@ -12,6 +13,10 @@ const elements = {
   region: document.getElementById("region"),
   productGroup: document.getElementById("productGroup"),
   applyProfile: document.getElementById("applyProfile"),
+  profileSteps: document.getElementById("profileSteps"),
+  conclusionHeadline: document.getElementById("conclusionHeadline"),
+  conclusionBody: document.getElementById("conclusionBody"),
+  flowSteps: document.getElementById("flowSteps"),
   cohortSummary: document.getElementById("cohortSummary"),
   resultPanel: document.getElementById("resultPanel"),
   cohortMetrics: document.getElementById("cohortMetrics"),
@@ -106,6 +111,71 @@ function displayMetricValue(metric) {
     return `${Math.max(1, value - 1)}~${value + 1}개 유형`;
   }
   return metric.value;
+}
+
+function renderConclusion() {
+  if (isSuppressedProfile()) {
+    elements.conclusionHeadline.textContent = "선택 조건의 비교군을 표시할 수 없습니다";
+    elements.conclusionBody.textContent =
+      "기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 넓히거나 업태 조건을 완화해 주세요.";
+    return;
+  }
+
+  const metrics = scenario().metrics;
+  const activity = metrics.find((metric) => metric.label === "거래 활동 변화") || metrics[0];
+  const breadth = metrics.find((metric) => metric.label === "취급 품목 폭") || metrics[1];
+
+  elements.conclusionHeadline.textContent =
+    `${state.profile.region} ${state.profile.businessType} 기준, 거래 활동은 ${activity.position}에 해당합니다`;
+  elements.conclusionBody.innerHTML =
+    `<strong>위치:</strong> ${state.profile.productGroup} 관심 기업군 ${cohortCountDisplay()} 규모. ` +
+    `<strong>변화:</strong> 거래 활동 ${displayMetricValue(activity)} (${activity.position}). ` +
+    `<strong>확인:</strong> 취급 품목 폭은 ${displayMetricValue(breadth)} 수준입니다. 아래 「확인할 사항」 탭에서 질문을 확인하세요.`;
+}
+
+function updateProfileSteps() {
+  if (!elements.profileSteps) return;
+  const items = [...elements.profileSteps.querySelectorAll("li")];
+  const focusMap = {
+    businessType: 0,
+    region: 1,
+    productGroup: 2,
+  };
+  const activeId = document.activeElement?.id;
+  let activeIndex = focusMap[activeId] ?? (state.profileApplied ? 3 : 2);
+
+  items.forEach((item, index) => {
+    item.classList.toggle("active", !state.profileApplied && index === activeIndex);
+    item.classList.toggle("done", state.profileApplied || index < activeIndex);
+  });
+
+  elements.applyProfile.disabled = !(
+    elements.businessType.value &&
+    elements.region.value &&
+    elements.productGroup.value
+  );
+}
+
+function updateFlowSteps() {
+  if (!elements.flowSteps) return;
+  const activeTab = elements.tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+  const tabId = activeTab?.id || "tab-overview";
+  let active = "orient";
+  if (tabId === "tab-questions") active = "check";
+  else if (state.profileApplied) {
+    const resultTop = elements.resultPanel?.getBoundingClientRect().top ?? 9999;
+    active = resultTop < window.innerHeight * 0.45 ? "change" : "orient";
+  }
+
+  elements.flowSteps.querySelectorAll(".flow-step").forEach((step) => {
+    const stepId = step.dataset.step;
+    step.classList.remove("flow-step--current", "flow-step--done");
+    const order = ["orient", "change", "check"];
+    const activeIndex = order.indexOf(active);
+    const stepIndex = order.indexOf(stepId);
+    if (stepIndex === activeIndex) step.classList.add("flow-step--current");
+    else if (stepIndex < activeIndex) step.classList.add("flow-step--done");
+  });
 }
 
 function renderSummary() {
@@ -494,14 +564,20 @@ function renderPrivacy() {
 
 function renderAll() {
   renderSummary();
+  renderConclusion();
+  updateProfileSteps();
   elements.resultPanel.hidden = isSuppressedProfile();
-  if (isSuppressedProfile()) return;
+  if (isSuppressedProfile()) {
+    updateFlowSteps();
+    return;
+  }
   renderMetrics();
   renderTrendChart();
   renderOpportunityChart();
   renderOpportunityTable();
   renderSimilarGroups();
   renderQuestions();
+  updateFlowSteps();
 }
 
 function activateTab(tab) {
@@ -513,6 +589,7 @@ function activateTab(tab) {
   elements.panels.forEach((panel) => {
     panel.hidden = panel.id !== tab.getAttribute("aria-controls");
   });
+  updateFlowSteps();
 }
 
 function bindTabs() {
@@ -554,11 +631,25 @@ async function init() {
   );
   elements.applyProfile.addEventListener("click", () => {
     readProfile();
+    state.profileApplied = true;
     renderAll();
-    elements.cohortSummary.focus?.();
+    elements.conclusionCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
+  [elements.businessType, elements.region, elements.productGroup].forEach((field) => {
+    field.addEventListener("focus", () => {
+      state.profileApplied = false;
+      updateProfileSteps();
+    });
+    field.addEventListener("change", () => {
+      state.profileApplied = false;
+      updateProfileSteps();
+    });
+  });
+  window.addEventListener("scroll", updateFlowSteps, { passive: true });
+  window.addEventListener("resize", updateFlowSteps, { passive: true });
   bindTabs();
   renderPrivacy();
+  updateProfileSteps();
   renderAll();
 }
 

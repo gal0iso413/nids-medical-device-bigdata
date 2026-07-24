@@ -53,16 +53,29 @@ def build_payload(seed: int = 20260713) -> dict:
     hub_id = "D03"
     edges: list[dict] = []
 
-    def add_edge(src: str, dst: str, item: str, base_count: int, base_qty: int) -> None:
+    def add_edge(src: str, dst: str, item: str, base_count: int, base_qty: int, pattern: str = "steady") -> None:
         monthly = {}
         for index, month in enumerate(MONTHS):
             drift = 1 + (index - 2) * rng.uniform(-0.04, 0.10)
             if src == hub_id or dst == hub_id:
                 drift += index * 0.07
-            monthly[month] = {
-                "count": max(1, round(base_count * drift + rng.uniform(-2, 2))),
-                "quantity": max(10, round(base_qty * drift + rng.uniform(-35, 35))),
-            }
+            count = max(1, round(base_count * drift + rng.uniform(-2, 2)))
+            quantity = max(10, round(base_qty * drift + rng.uniform(-35, 35)))
+
+            # Sparse patterns enable new / lost / surging demos across 3-month windows.
+            # Months: 0..3 early, 4 mid, 5..7 recent (anchor 202605 → cur 603-605, prev 512-602).
+            if pattern == "new" and index < 5:
+                count, quantity = 0, 0
+            elif pattern == "lost" and index >= 5:
+                count, quantity = 0, 0
+            elif pattern == "surge" and index >= 5:
+                count = max(count, round(base_count * (2.4 + rng.uniform(0.2, 0.8))))
+                quantity = max(quantity, round(base_qty * (2.2 + rng.uniform(0.2, 0.6))))
+            elif pattern == "fade" and index >= 5:
+                count = max(0, round(count * 0.15))
+                quantity = max(0, round(quantity * 0.15))
+
+            monthly[month] = {"count": count, "quantity": quantity}
         edges.append(
             {
                 "id": f"E{len(edges) + 1:03d}",
@@ -97,6 +110,17 @@ def build_payload(seed: int = 20260713) -> dict:
             rng.randint(3, 11),
             rng.randint(100, 480),
         )
+
+    # Explicit demo edges around the hub for change callouts (new / lost / surge).
+    add_edge("M07", hub_id, "환자감시장치", 8, 320, pattern="new")
+    add_edge("I02", hub_id, "체외진단 시약", 7, 280, pattern="new")
+    add_edge(hub_id, "H18", "창상피복재", 9, 260, pattern="new")
+    add_edge("M02", hub_id, "일회용 주사기", 11, 400, pattern="lost")
+    add_edge(hub_id, "H03", "심혈관용 카테터", 12, 380, pattern="lost")
+    add_edge(hub_id, "H07", "정형용 임플란트", 10, 420, pattern="surge")
+    add_edge("M05", hub_id, "환자감시장치", 9, 360, pattern="surge")
+    add_edge(hub_id, "H12", "일회용 주사기", 8, 300, pattern="fade")
+
 
     degree = Counter()
     for edge in edges:
