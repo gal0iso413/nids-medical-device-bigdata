@@ -1,7 +1,7 @@
 const state = {
   data: null,
   profile: {
-    businessType: "판매·임대업체",
+    businessType: "판매(임대)업",
     region: "수도권",
     productGroup: "B2. 임상화학검사기기",
   },
@@ -20,7 +20,9 @@ const elements = {
   cohortSummary: document.getElementById("cohortSummary"),
   resultPanel: document.getElementById("resultPanel"),
   cohortMetrics: document.getElementById("cohortMetrics"),
+  thinHistoryNotice: document.getElementById("thinHistoryNotice"),
   trendChart: document.getElementById("trendChart"),
+  trendCaption: document.getElementById("trendCaption"),
   opportunityChart: document.getElementById("opportunityChart"),
   opportunityTable: document.getElementById("opportunityTable"),
   similarGroups: document.getElementById("similarGroups"),
@@ -34,6 +36,26 @@ const elements = {
 
 function scenario() {
   return state.data.scenarios[state.profile.businessType];
+}
+
+function resolveDataQuality() {
+  const rules = state.data.dataQualityRules || [];
+  const match = rules.find(
+    (rule) =>
+      rule.businessType === state.profile.businessType &&
+      rule.region === state.profile.region,
+  );
+  if (match) {
+    return {
+      dataStatus: match.dataStatus,
+      historyMonths: match.historyMonths ?? 0,
+    };
+  }
+  const current = scenario();
+  return {
+    dataStatus: current.dataStatus || "ok",
+    historyMonths: current.historyMonths ?? 6,
+  };
 }
 
 function fillOptions(select, options, selected) {
@@ -89,7 +111,11 @@ function cohortCountDisplay() {
 }
 
 function isSuppressedProfile() {
-  return state.profile.businessType === "기타 관련기관" && state.profile.region === "제주권";
+  return resolveDataQuality().dataStatus === "suppressed";
+}
+
+function isThinHistory() {
+  return resolveDataQuality().dataStatus === "thinHistory";
 }
 
 function positionClass(position) {
@@ -115,22 +141,25 @@ function displayMetricValue(metric) {
 
 function renderConclusion() {
   if (isSuppressedProfile()) {
-    elements.conclusionHeadline.textContent = "선택 조건의 비교군을 표시할 수 없습니다";
+    elements.conclusionHeadline.textContent = "해당 기업군을 공개 기준으로 표시할 수 없습니다";
     elements.conclusionBody.textContent =
-      "기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 넓히거나 업태 조건을 완화해 주세요.";
+      "기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 「전국」으로 넓히거나 업종 조건을 완화해 주세요.";
     return;
   }
 
   const metrics = scenario().metrics;
   const activity = metrics.find((metric) => metric.label === "거래 활동 변화") || metrics[0];
   const breadth = metrics.find((metric) => metric.label === "취급 품목 폭") || metrics[1];
+  const thinNote = isThinHistory()
+    ? " 비교 기간이 짧아 월별 추이는 표시하지 않습니다."
+    : "";
 
   elements.conclusionHeadline.textContent =
     `${state.profile.region} ${state.profile.businessType} 기준, 거래 활동은 ${activity.position}에 해당합니다`;
   elements.conclusionBody.innerHTML =
-    `<strong>위치:</strong> ${state.profile.productGroup} 관심 기업군 ${cohortCountDisplay()} 규모. ` +
+    `<strong>위치:</strong> ${state.profile.productGroup} 관심 해당 기업군 ${cohortCountDisplay()} 규모. ` +
     `<strong>변화:</strong> 거래 활동 ${displayMetricValue(activity)} (${activity.position}). ` +
-    `<strong>확인:</strong> 취급 품목 폭은 ${displayMetricValue(breadth)} 수준입니다. 아래 「확인할 사항」 탭에서 질문을 확인하세요.`;
+    `<strong>확인:</strong> 취급 품목 폭은 ${displayMetricValue(breadth)} 수준입니다.${thinNote} 아래 「확인할 사항」 탭에서 질문을 확인하세요.`;
 }
 
 function updateProfileSteps() {
@@ -182,21 +211,24 @@ function renderSummary() {
   if (isSuppressedProfile()) {
     elements.cohortSummary.innerHTML = `
       <p class="eyebrow">비교 결과 보호</p>
-      <h3>선택 조건의 비교군을 표시할 수 없습니다</h3>
+      <h3>해당 기업군을 공개 기준으로 표시할 수 없습니다</h3>
       <p>
         해당 조건은 기업·기관 수가 공개 기준보다 적은 예시입니다.
-        권역을 넓히거나 업태 조건을 완화해 주세요.
+        권역을 「전국」으로 넓히거나 업종 조건을 완화해 주세요.
       </p>
     `;
     return;
   }
+  const thinNote = isThinHistory()
+    ? " 최근 거래 이력이 짧아 월별 추이는 숨깁니다."
+    : "";
   elements.cohortSummary.innerHTML = `
     <p class="eyebrow">현재 비교 기준</p>
     <h3>${state.profile.region} · ${state.profile.businessType}</h3>
     <p>
       <strong>${state.profile.productGroup}</strong>에 관심이 있는
-      <strong>${cohortCountDisplay()} 기업·기관 규모</strong>의 생성 예시 집계입니다.
-      개별 업체의 값이나 순위는 표시하지 않습니다.
+      <strong>해당 기업군 ${cohortCountDisplay()} 규모</strong>의 생성 예시 집계입니다.
+      개별 업체의 값이나 순위는 표시하지 않습니다.${thinNote}
     </p>
   `;
 }
@@ -230,6 +262,22 @@ function textElement(text, attributes = {}) {
 
 function renderTrendChart() {
   const svg = elements.trendChart;
+  const thin = isThinHistory();
+
+  if (elements.thinHistoryNotice) {
+    elements.thinHistoryNotice.hidden = !thin;
+  }
+  if (elements.trendCaption) {
+    elements.trendCaption.hidden = thin;
+  }
+
+  if (thin) {
+    svg.hidden = true;
+    svg.replaceChildren();
+    return;
+  }
+
+  svg.hidden = false;
   const data = scenario().transactionSeries;
   const width = 900;
   const height = 380;
@@ -326,7 +374,7 @@ function renderTrendChart() {
       "stroke-width": 3,
       "stroke-dasharray": "7 5",
     }),
-    textElement("같은 업태·권역 중앙값", { x: 697, y: 22, fill: "#293a4c", "font-size": 12 }),
+    textElement("같은 업종·권역 중앙값", { x: 697, y: 22, fill: "#293a4c", "font-size": 12 }),
     textElement("거래 보고 건수", {
       x: 16,
       y: 18,
@@ -354,6 +402,18 @@ function supplierCountBand(count) {
   return `${Math.max(1, lower)}~${lower + 9}개`;
 }
 
+function supplierBubbleRadius(count) {
+  if (count >= 35) return 19;
+  if (count >= 15) return 15;
+  return 11;
+}
+
+function supplierSizeLabel(count) {
+  if (count >= 35) return "대";
+  if (count >= 15) return "중";
+  return "소";
+}
+
 function growthBand(value) {
   const direction = value >= 0 ? "증가" : "감소";
   const absolute = Math.abs(value);
@@ -373,33 +433,14 @@ function renderOpportunityChart() {
   const height = 430;
   const margin = { top: 42, right: 34, bottom: 68, left: 76 };
   const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const xMin = -12;
-  const xMax = 32;
-  const yMin = 0;
-  const yMax = 0.5;
+  const xMin = 0;
+  const xMax = 0.5;
+  const yMin = -12;
+  const yMax = 32;
   const x = (value) => margin.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
-  const y = (value) => margin.top + ((yMax - value) / (yMax - yMin)) * plotHeight;
+  const y = (value) => margin.top + ((yMax - value) / (yMax - yMin)) * (height - margin.top - margin.bottom);
 
   svg.replaceChildren();
-  [0, 10, 20, 30].forEach((tick) => {
-    svg.append(
-      svgElement("line", {
-        x1: x(tick),
-        y1: margin.top,
-        x2: x(tick),
-        y2: height - margin.bottom,
-        stroke: tick === 0 ? "#8da0b3" : "#d7e0e8",
-      }),
-      textElement(`${tick}%`, {
-        x: x(tick),
-        y: height - 42,
-        "text-anchor": "middle",
-        fill: "#536273",
-        "font-size": 12,
-      }),
-    );
-  });
   [
     { value: 0.1, label: "낮음" },
     { value: 0.25, label: "보통" },
@@ -407,16 +448,34 @@ function renderOpportunityChart() {
   ].forEach((tick) => {
     svg.append(
       svgElement("line", {
-        x1: margin.left,
-        y1: y(tick.value),
-        x2: width - margin.right,
-        y2: y(tick.value),
+        x1: x(tick.value),
+        y1: margin.top,
+        x2: x(tick.value),
+        y2: height - margin.bottom,
         stroke: tick.value === 0.25 ? "#8da0b3" : "#d7e0e8",
         "stroke-dasharray": tick.value === 0.25 ? "6 4" : "",
       }),
       textElement(tick.label, {
+        x: x(tick.value),
+        y: height - 42,
+        "text-anchor": "middle",
+        fill: "#536273",
+        "font-size": 12,
+      }),
+    );
+  });
+  [0, -10, 10, 20, 30].forEach((tick) => {
+    svg.append(
+      svgElement("line", {
+        x1: margin.left,
+        y1: y(tick),
+        x2: width - margin.right,
+        y2: y(tick),
+        stroke: tick === 0 ? "#8da0b3" : "#d7e0e8",
+      }),
+      textElement(`${tick}%`, {
         x: margin.left - 12,
-        y: y(tick.value) + 4,
+        y: y(tick) + 4,
         "text-anchor": "end",
         fill: "#536273",
         "font-size": 12,
@@ -425,7 +484,7 @@ function renderOpportunityChart() {
   });
 
   svg.append(
-    textElement("최근 거래 활동 증감률 (%)", {
+    textElement("공급자 집중도 (낮음 → 높음)", {
       x: margin.left + plotWidth / 2,
       y: height - 10,
       "text-anchor": "middle",
@@ -433,7 +492,7 @@ function renderOpportunityChart() {
       "font-size": 13,
       "font-weight": 700,
     }),
-    textElement("공급자 집중도 (HHI)", {
+    textElement("최근 거래 활동 증감률 (%)", {
       x: 18,
       y: 24,
       fill: "#293a4c",
@@ -442,14 +501,60 @@ function renderOpportunityChart() {
     }),
   );
 
+  const legendX = width - margin.right - 118;
+  const legendY = margin.top + 8;
+  svg.append(
+    svgElement("rect", {
+      x: legendX - 8,
+      y: legendY - 6,
+      width: 126,
+      height: 78,
+      rx: 8,
+      fill: "#ffffff",
+      "fill-opacity": 0.92,
+      stroke: "#d7e0e8",
+    }),
+    textElement("거품 = 공급자 수", {
+      x: legendX,
+      y: legendY + 10,
+      fill: "#293a4c",
+      "font-size": 11,
+      "font-weight": 700,
+    }),
+  );
+  [
+    { label: "소 <15", count: 10, dy: 28 },
+    { label: "중 15–34", count: 22, dy: 48 },
+    { label: "대 ≥35", count: 40, dy: 68 },
+  ].forEach((row) => {
+    const r = supplierBubbleRadius(row.count);
+    svg.append(
+      svgElement("circle", {
+        cx: legendX + 12,
+        cy: legendY + row.dy,
+        r,
+        fill: "#5f86b3",
+        "fill-opacity": 0.75,
+        stroke: "#ffffff",
+        "stroke-width": 1.5,
+      }),
+      textElement(row.label, {
+        x: legendX + 28,
+        y: legendY + row.dy + 4,
+        fill: "#536273",
+        "font-size": 11,
+      }),
+    );
+  });
+
   data.forEach((record) => {
     const selected = record.product === state.profile.productGroup;
-    const radius = record.scaleBand === "대" ? 19 : record.scaleBand === "중" ? 15 : 11;
+    const radius = supplierBubbleRadius(record.supplierCount);
     const group = svgElement("g");
     group.append(
       svgElement("circle", {
-        cx: x(record.growthPct),
-        cy: y(record.hhi),
+        cx: x(record.hhi),
+        cy: y(record.growthPct),
         r: radius,
         fill: selected ? "#087f78" : "#5f86b3",
         "fill-opacity": selected ? 0.95 : 0.72,
@@ -457,8 +562,8 @@ function renderOpportunityChart() {
         "stroke-width": selected ? 4 : 2,
       }),
       textElement(record.product, {
-        x: x(record.growthPct),
-        y: y(record.hhi) - radius - 7,
+        x: x(record.hhi),
+        y: y(record.growthPct) - radius - 7,
         "text-anchor": "middle",
         fill: "#293a4c",
         "font-size": selected ? 13 : 11,
@@ -466,7 +571,7 @@ function renderOpportunityChart() {
       }),
     );
     const title = svgElement("title");
-    title.textContent = `${record.product}: ${growthBand(record.growthPct)}, 공급자 집중도 ${concentrationBand(record.hhi)}, 공급자 ${supplierCountBand(record.supplierCount)}`;
+    title.textContent = `${record.product}: ${growthBand(record.growthPct)}, 공급자 집중도 ${concentrationBand(record.hhi)}, 공급자 ${supplierCountBand(record.supplierCount)} (${supplierSizeLabel(record.supplierCount)})`;
     group.append(title);
     svg.append(group);
   });
@@ -475,6 +580,7 @@ function renderOpportunityChart() {
 function renderOpportunityTable() {
   const records = [...scenario().opportunities].sort((a, b) => b.growthPct - a.growthPct);
   elements.opportunityTable.innerHTML = `
+    <p class="panel-description">거품 크기 = 공급자 수 (소 &lt;15 · 중 15–34 · 대 ≥35)</p>
     <table>
       <thead>
         <tr>
@@ -493,7 +599,7 @@ function renderOpportunityTable() {
                 <td><strong>${record.product}</strong></td>
                 <td>${growthBand(record.growthPct)}</td>
                 <td>${concentrationBand(record.hhi)}</td>
-                <td>${supplierCountBand(record.supplierCount)}</td>
+                <td>${supplierCountBand(record.supplierCount)} (${supplierSizeLabel(record.supplierCount)})</td>
                 <td>${opportunityInterpretation(record)}</td>
               </tr>
             `,
@@ -532,13 +638,20 @@ function renderQuestions() {
     },
     {
       title: `${state.profile.region} 비교 범위 확인`,
-      text: "선택 권역의 기업 수가 적으면 결과 범위를 더 넓혀야 합니다. 전국 비교와 권역 비교 중 어떤 기준이 업무에 더 유용한지 검토해 보세요.",
+      text: "선택 권역의 기업 수가 적으면 「전국」으로 범위를 넓혀 보세요. 수도권·비수도권·전국 중 업무에 맞는 기준을 검토해 보세요.",
     },
     {
       title: "기업군 정의 확인",
       text: `${state.profile.businessType}·${state.profile.productGroup} 조건이 실제 동종 기업을 잘 묶는지, 추가로 필요한 구분 기준이 있는지 확인해 보세요.`,
     },
   ];
+  if (isThinHistory()) {
+    questions.unshift({
+      title: "비교 기간 확인",
+      text: "최근 거래 이력이 짧아 월별 추이는 숨겼습니다. 더 긴 기간이 쌓이면 변화 비교를 다시 확인해 보세요.",
+    });
+    questions.length = 3;
+  }
   elements.reviewQuestions.innerHTML = questions
     .map(
       (question, index) => `

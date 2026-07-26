@@ -38,8 +38,8 @@
     <section class="page-title">
       <div>
         <p class="eyebrow">회사명을 입력하지 않는 맞춤 비교</p>
-        <h2>비슷한 기업군 속 위치와 시장 변화를 봅니다</h2>
-        <p>업태와 관심 품목을 선택하면 익명 기업군 비교, 품목 변화와 확인할 질문을 제공합니다.</p>
+        <h2>해당 기업군 속 위치와 시장 변화를 봅니다</h2>
+        <p>업종과 관심 품목군을 선택하면 익명 기업군 비교, 품목군 변화와 확인할 질문을 제공합니다. 품목명 통계 이어보기는 <a href="../innovation/class3.html">혁신 시안</a>에서 확인할 수 있습니다.</p>
       </div>
     </section>
 
@@ -52,13 +52,13 @@
       <aside class="control-panel" aria-labelledby="profile-heading">
         <h3 id="profile-heading">비교할 기업 프로필</h3>
         <ol class="profile-steps" id="profileSteps" aria-label="프로필 선택 단계">
-          <li data-step="businessType">업태</li>
+          <li data-step="businessType">업종</li>
           <li data-step="region">권역</li>
-          <li data-step="productGroup">품목</li>
+          <li data-step="productGroup">품목군</li>
         </ol>
 
         <div class="field">
-          <label for="businessType">1. 업태</label>
+          <label for="businessType">1. 업종</label>
           <select id="businessType"></select>
         </div>
 
@@ -70,11 +70,11 @@
         <div class="field">
           <label for="productGroup">3. 관심 품목군</label>
           <select id="productGroup"></select>
-          <p class="field-help">의료기기 분류 체계(일반·체외진단·디지털)의 세부 품목을 선택합니다.</p>
+          <p class="field-help">의료기기 분류 체계(일반·체외진단·디지털)의 <strong>품목군</strong>을 선택합니다. 개별 품목명 조회는 혁신 시안에서 이어봅니다.</p>
         </div>
 
         <button id="applyProfile" class="primary-action apply-profile-btn" type="button">
-          비슷한 기업군 보기
+          해당 기업군 보기
         </button>
 
         <div class="control-note">
@@ -86,7 +86,7 @@
         <section id="conclusionCard" class="conclusion-card conclusion-card--accent" aria-live="polite">
           <p class="eyebrow">결론부터</p>
           <h3 id="conclusionHeadline">프로필을 선택한 뒤 비교 결과를 확인하세요</h3>
-          <p id="conclusionBody">왼쪽에서 업태·권역·품목을 고르고 「비슷한 기업군 보기」를 누르면, 기업군 위치와 변화 요약이 먼저 표시됩니다.</p>
+          <p id="conclusionBody">왼쪽에서 업종·권역·품목군을 고르고 「해당 기업군 보기」를 누르면, 기업군 위치와 변화 요약이 먼저 표시됩니다.</p>
         </section>
 
         <section id="cohortSummary" class="cohort-summary" aria-live="polite"></section>
@@ -96,8 +96,8 @@
           <div class="tab-list" role="tablist" aria-label="기업군 분석 결과 메뉴">
             <button id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">한눈에 보기</button>
             <button id="tab-questions" role="tab" aria-selected="false" aria-controls="panel-questions">확인할 사항</button>
-            <button id="tab-opportunity" role="tab" aria-selected="false" aria-controls="panel-opportunity">품목 변화 지도</button>
-            <button id="tab-groups" role="tab" aria-selected="false" aria-controls="panel-groups">비슷한 기업군</button>
+            <button id="tab-opportunity" role="tab" aria-selected="false" aria-controls="panel-opportunity">품목군 변화 지도</button>
+            <button id="tab-groups" role="tab" aria-selected="false" aria-controls="panel-groups">기업군 유형 참고</button>
           </div>
 
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
@@ -105,11 +105,15 @@
             <div class="chart chart-full chart-spaced">
               <h4>월별 거래 활동 변화</h4>
               <div class="chart-legend-box chart-legend-inline">
-                <p><strong>● 내가 고른 조건 평균</strong> — 업태·권역·품목을 모두 맞춘 기업군의 월별 거래 보고 건수 평균</p>
-                <p><strong>⋯ 같은 업태·권역 중앙값</strong> — 품목 조건 없이, 같은 업태·권역 전체 기업의 중앙값(비교 기준선)</p>
+                <p><strong>● 내가 고른 조건 평균</strong> — 업종·권역·품목군을 모두 맞춘 기업군의 월별 거래 보고 건수 평균</p>
+                <p><strong>⋯ 같은 업종·권역 중앙값</strong> — 품목군 조건 없이, 같은 업종·권역 전체 기업의 중앙값(비교 기준선)</p>
               </div>
-              <svg id="trendChart" viewBox="0 0 900 380" role="img" aria-label="선택 조건 평균과 같은 업태 권역 중앙값의 월별 거래 활동 비교"></svg>
-              <p class="chart-caption">단위: 거래 보고 건수 · 2025-12~2026-05</p>
+              <div id="thinHistoryNotice" class="sparse-notice" hidden>
+                <p class="sparse-notice-title">비교 기간이 부족합니다</p>
+                <p class="sparse-notice-body">이 기업군은 최근 거래 이력이 짧아 월별 추이를 안정적으로 보여주기 어렵습니다. 위치·범위 지표는 확인할 수 있습니다.</p>
+              </div>
+              <svg id="trendChart" viewBox="0 0 900 380" role="img" aria-label="선택 조건 평균과 같은 업종 권역 중앙값의 월별 거래 활동 비교"></svg>
+              <p id="trendCaption" class="chart-caption">단위: 거래 보고 건수 · 2025-12~2026-05</p>
               <details class="method-panel chart-reading-panel">
                 <summary>결과 읽는 방법</summary>
                 <div class="method-content">
@@ -127,24 +131,24 @@
             <details class="method-panel method-panel-spaced">
               <summary>질문은 어떻게 정해지나요?</summary>
               <div class="method-content">
-                <p>선택한 품목의 성장·집중도, 권역별 비교군 크기, 프로필 정의 적합성 등 <strong>집계 결과에서 읽히는 패턴</strong>에 맞춰 규칙 기반으로 생성합니다. LLM이 임의로 권고를 만들지 않습니다.</p>
+                <p>선택한 품목군의 성장·집중도, 권역별 비교군 크기, 프로필 정의 적합성 등 <strong>집계 결과에서 읽히는 패턴</strong>에 맞춰 규칙 기반으로 생성합니다. LLM이 임의로 권고를 만들지 않습니다.</p>
               </div>
             </details>
           </div>
 
           <div id="panel-opportunity" role="tabpanel" aria-labelledby="tab-opportunity" hidden>
             <h4>최근 변화와 공급자 집중도</h4>
-            <p class="panel-description">오른쪽일수록 최근 활동이 증가했고, 위쪽일수록 소수 공급자 비중이 큰 품목군입니다.</p>
+            <p class="panel-description">오른쪽일수록 공급자 집중도가 높고, 위쪽일수록 최근 거래 활동이 증가한 품목군입니다. 거품 크기는 공급자 수입니다.</p>
             <div class="chart">
-              <svg id="opportunityChart" viewBox="0 0 760 430" role="img" aria-label="품목군별 최근 성장률과 공급자 집중도 비교"></svg>
-              <p class="chart-caption">가로축: 최근 거래 활동 증감률 구간 · 세로축: 공급자 집중도 구간 · 생성 예시 데이터</p>
+              <svg id="opportunityChart" viewBox="0 0 760 430" role="img" aria-label="품목군별 공급자 집중도와 최근 성장률 비교"></svg>
+              <p class="chart-caption">가로축: 공급자 집중도 · 세로축: 최근 거래 활동 증감률 · 거품: 공급자 수(소&lt;15 · 중 15–34 · 대≥35) · 생성 예시 데이터</p>
             </div>
             <div id="opportunityTable" class="table-wrap table-spaced"></div>
           </div>
 
           <div id="panel-groups" role="tabpanel" aria-labelledby="tab-groups" hidden>
-            <h4>선택 프로필과 가까운 기업군 유형</h4>
-            <p class="panel-description">알고리즘 번호 대신 어떤 특성이 함께 나타나는지 설명합니다.</p>
+            <h4>해당 기업군에서 자주 보이는 유형 참고</h4>
+            <p class="panel-description">알고리즘 번호 대신 어떤 특성이 함께 나타나는지 설명합니다. 유사 군집 추천이 아닙니다.</p>
             <div id="similarGroups" class="insight-list"></div>
             <details class="method-panel method-panel-spaced">
               <summary>이 유형은 어떻게 만들어지나요?</summary>
@@ -165,11 +169,11 @@
         <details class="method-panel">
           <summary>분석 기준과 한계 보기</summary>
           <div class="method-content">
-            <p><strong>기업군 비교:</strong> 업태·권역·품목 조건이 비슷한 여러 기업의 집계 범위를 비교합니다.</p>
-            <p><strong>월별 추이:</strong> 실선은 선택 조건 전체의 평균, 점선은 같은 업태·권역 전체의 중앙값입니다.</p>
+            <p><strong>기업군 비교:</strong> 업종·권역·품목군 조건이 맞는 해당 기업군의 집계 범위를 비교합니다.</p>
+            <p><strong>월별 추이:</strong> 실선은 선택 조건 전체의 평균, 점선은 같은 업종·권역 전체의 중앙값입니다. 이력이 짧으면 추이를 숨깁니다.</p>
             <p><strong>공급자 집중도:</strong> 한 품목군의 공급이 소수 업체에 집중되어 있는 정도를 0~1 범위로 나타냅니다.</p>
-            <p><strong>비슷한 기업군:</strong> 향후 품목·거래처·지역 구성 비율을 표준화한 군집 분석으로 유형을 만듭니다.</p>
-            <p><strong>추가 프로필 후보 (top7 데이터 검토):</strong> 매출·규모 컬럼은 없습니다. 대신 공급내역에서 (1) 3개월 거래 보고 건수 구간, (2) 거래처 수(거래처 코드 기준), (3) 취급 품목 수를 같은 업태·권역 안에서 계산해 군집·필터에 쓸 수 있습니다. 현재 시안은 업태·권역·품목 3가지만 선택합니다.</p>
+            <p><strong>기업군 유형 참고:</strong> 향후 품목군·거래처·지역 구성 비율을 표준화한 군집 분석으로 유형을 만들 수 있으나, 기본 화면은 선택 조건 해당 기업군 집계입니다.</p>
+            <p><strong>추가 프로필 후보 (top7 데이터 검토):</strong> 매출·규모 컬럼은 없습니다. 대신 공급내역에서 (1) 3개월 거래 보고 건수 구간, (2) 거래처 수(거래처 코드 기준), (3) 취급 품목 수를 같은 업종·권역 안에서 계산해 군집·필터에 쓸 수 있습니다. 현재 시안은 업종·권역·품목군 3가지만 선택합니다.</p>
             <ul id="limitationList"></ul>
           </div>
         </details>

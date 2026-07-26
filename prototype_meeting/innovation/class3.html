@@ -30,24 +30,24 @@
   <main id="main" class="lab-main">
     <section class="scope-line">
       <strong>개별 업체 정보는 공개하지 않습니다.</strong>
-      <span>회사명을 입력하지 않습니다. 모든 수치는 생성 예시입니다.</span>
+      <span>회사명·순위·정확한 개인 값은 숨깁니다. 모든 수치는 생성 예시입니다. 품목군과 품목명은 다릅니다.</span>
     </section>
 
     <ol class="progress-rail" id="progressRail" aria-label="진행 단계">
       <li><button type="button" data-phase="profile" aria-current="step"><span class="step-num">01</span><span class="step-label">비교 기준</span></button></li>
-      <li><button type="button" data-phase="report" disabled><span class="step-num">02</span><span class="step-label">자리 리포트</span></button></li>
-      <li><button type="button" data-phase="depth" disabled><span class="step-num">03</span><span class="step-label">더 살펴보기</span></button></li>
+      <li><button type="button" data-phase="report" disabled><span class="step-num">02</span><span class="step-label">기업군 리포트</span></button></li>
+      <li><button type="button" data-phase="device" disabled><span class="step-num">03</span><span class="step-label">의료기기 통계</span></button></li>
     </ol>
 
     <section id="phase-profile" class="stage stage-enter">
       <header class="stage-head">
         <p class="lab-eyebrow">01 · 비교 기준</p>
         <h2 class="display">어떤 기업군과<br>비교할까요?</h2>
-        <p class="lead">회사명 없이 업태·권역·품목만으로 비슷한 기업군을 만듭니다.</p>
+        <p class="lead">회사명 없이 업종·권역·<strong>품목군</strong>으로 해당 기업군 집계를 만듭니다. 이후 특정 <strong>품목명</strong> 통계도 이어볼 수 있습니다.</p>
       </header>
       <ol class="wizard-ribbon" id="wizardRibbon">
         <li class="wizard-cell is-active">
-          <label for="businessType"><span class="wizard-num">1</span> 업태</label>
+          <label for="businessType"><span class="wizard-num">1</span> 업종</label>
           <select id="businessType"></select>
         </li>
         <li class="wizard-cell">
@@ -60,97 +60,170 @@
         </li>
       </ol>
       <div class="btn-row">
-        <button type="button" class="btn btn-primary" id="applyProfile">리포트 생성</button>
+        <button type="button" class="btn btn-primary" id="applyProfile">기업군 리포트 생성</button>
       </div>
-      <p class="field-help" style="margin-top:16px">선택 조건은 개인 기업을 식별하지 않는 비교군을 만드는 데만 사용합니다.</p>
+      <p class="field-help" style="margin-top:16px">선택 조건은 개인 기업을 식별하지 않는 해당 기업군을 만드는 데만 사용합니다.</p>
     </section>
 
     <div id="resultStack" hidden>
-      <section id="phase-portrait" class="peer-portrait panel section-gap">
-        <p class="lab-eyebrow">비슷한 기업군</p>
-        <h2 id="portrait-heading" class="display">기업군 유형</h2>
-        <p id="portraitDescription" class="lead"></p>
-        <ul id="portraitTraits" class="trait-row"></ul>
-        <p id="portraitMeta" class="meta"></p>
-      </section>
-
       <section id="phase-report" class="report-spread section-gap">
         <header class="stage-head">
-          <p class="lab-eyebrow">02 · 우리 자리 리포트</p>
-          <h2 class="title">우리 자리 리포트</h2>
+          <p class="lab-eyebrow">02 · 기업군 리포트</p>
+          <h2 class="title">해당 기업군 리포트</h2>
           <p id="reportSubtitle" class="meta"></p>
         </header>
 
-        <div class="report-grid">
-          <div class="panel">
-            <h3 class="block-title">위치</h3>
-            <p id="positionSentence" class="block-copy"></p>
-            <div id="reportMetrics" class="metric-strip metric-strip--2"></div>
-          </div>
-          <div class="panel">
-            <h3 class="block-title">변화</h3>
+        <section class="chapter panel" id="firmMacro">
+          <h3 class="block-title">거시</h3>
+          <p id="macroSentence" class="block-copy"></p>
+          <div id="macroStrip" class="macro-strip"></div>
+        </section>
+
+        <section class="chapter panel section-gap" id="firmFacts">
+          <h3 class="block-title">쉬운 사실</h3>
+          <p id="positionSentence" class="block-copy"></p>
+          <div id="reportMetrics" class="metric-strip metric-strip--2"></div>
+          <div class="section-gap">
+            <h4 class="block-title">변화</h4>
             <p id="changeSentence" class="block-copy"></p>
+            <div id="thinHistoryNotice" class="sparse-notice" hidden>
+              <p class="sparse-notice-title">비교 기간이 부족합니다</p>
+              <p class="sparse-notice-body">이 기업군은 최근 거래 이력이 짧아 월별 추이를 안정적으로 보여주기 어렵습니다. 위치·범위 지표는 확인할 수 있습니다.</p>
+            </div>
             <svg id="trendChart" class="trend-svg" viewBox="0 0 900 280" role="img" aria-label="월별 거래 활동 비교"></svg>
-            <p class="meta">실선: 선택 조건 평균 · 점선: 같은 업태·권역 중앙값</p>
+            <p id="trendLegend" class="meta">실선: 선택 조건 평균 · 점선: 같은 업종·권역 중앙값</p>
+          </div>
+        </section>
+
+        <section class="chapter panel section-gap diagnosis-panel" id="firmDiagnosis">
+          <h3 class="block-title">진단</h3>
+          <div id="firmDiagnosisBody" class="diagnosis-body"></div>
+        </section>
+
+        <p id="privacyInline" class="privacy-inline section-gap" role="note"></p>
+
+        <div class="cta-panel cta-panel--inline section-gap" id="midCta">
+          <p class="meta">진단까지 보셨다면, 품목명 통계로 이어보거나 아래 지도를 확인할 수 있습니다.</p>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="openDeviceSearchMid">관심 의료기기 알아보기</button>
+            <button type="button" class="btn btn-secondary" id="scrollToMap">품목군 검토 지도 보기</button>
           </div>
         </div>
 
-        <div class="section-gap">
-          <h3 class="block-title">다음에 볼 것</h3>
-          <div id="reviewQuestions" class="question-boards"></div>
-        </div>
+        <section class="chapter section-gap" id="firmReact">
+          <h3 class="block-title">반응 · 더 살펴보기</h3>
+          <p class="meta">지도는 기본으로 열려 있습니다. 다른 항목은 필요할 때만 펼치세요.</p>
+          <div class="depth-panels">
+            <details class="depth-panel" id="depth-map" open>
+              <summary>품목군 검토 지도</summary>
+              <div class="depth-body">
+                <p class="meta">가로: 공급자 집중도 · 세로: 최근 증감률 · 거품: 공급자 수(소·중·대). 투자·사업 보장이 아닙니다.</p>
+                <svg id="opportunityChart" class="opp-svg" viewBox="0 0 760 430" role="img" aria-label="품목군 성장과 집중도"></svg>
+                <div id="opportunityTable" class="table-wrap"></div>
+              </div>
+            </details>
+            <details class="depth-panel" id="depth-questions">
+              <summary>확인할 질문</summary>
+              <div class="depth-body" id="reviewQuestions"></div>
+            </details>
+            <details class="depth-panel" id="depth-groups">
+              <summary>기업군 유형 참고</summary>
+              <div class="depth-body" id="similarGroups"></div>
+            </details>
+            <details class="depth-panel" id="depth-privacy">
+              <summary>분석 기준·개인정보 보호</summary>
+              <div class="depth-body">
+                <p id="privacyMessage"></p>
+                <ul id="hiddenFieldList"></ul>
+                <ul id="limitationList"></ul>
+              </div>
+            </details>
+          </div>
+        </section>
 
         <p id="reportLimit" class="report-limit"></p>
 
-        <div class="btn-row">
-          <button type="button" class="btn btn-secondary" id="backToProfile">비교 기준 다시 고르기</button>
-          <button type="button" class="btn btn-primary" id="openDepth">품목·기업군 더 살펴보기</button>
-        </div>
-      </section>
-
-      <section id="phase-depth" class="section-gap" hidden>
-        <header class="stage-head">
-          <p class="lab-eyebrow">03 · 더 살펴보기</p>
-          <h2 class="title">필요한 부분만 열어보세요</h2>
-        </header>
-        <div class="depth-panels">
-          <details class="depth-panel" id="depth-map">
-            <summary>품목 검토 지도</summary>
-            <div class="depth-body">
-              <p class="meta">검토할 품목의 최근 변화와 공급자 집중도입니다. 투자·사업 보장이 아닙니다.</p>
-              <svg id="opportunityChart" class="opp-svg" viewBox="0 0 760 430" role="img" aria-label="품목군 성장과 집중도"></svg>
-              <div id="opportunityTable" class="table-wrap"></div>
-            </div>
-          </details>
-          <details class="depth-panel" id="depth-groups">
-            <summary>비슷한 기업군 더 보기</summary>
-            <div class="depth-body" id="similarGroups"></div>
-          </details>
-          <details class="depth-panel" id="depth-privacy">
-            <summary>분석 기준·개인정보 보호</summary>
-            <div class="depth-body">
-              <p id="privacyMessage"></p>
-              <ul id="hiddenFieldList"></ul>
-              <ul id="limitationList"></ul>
-            </div>
-          </details>
-        </div>
-        <div class="btn-row">
-          <button type="button" class="btn btn-secondary" id="backToReport">리포트로 돌아가기</button>
+        <div class="cta-panel section-gap">
+          <h3 class="block-title">다음에 할 일</h3>
+          <p class="meta">기업군 리포트를 본 뒤, 특정 품목명 통계로 이어보거나 조건을 바꿔 다시 볼 수 있습니다.</p>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="openDeviceSearch">관심 의료기기 알아보기</button>
+            <button type="button" class="btn btn-secondary" id="backToProfile">같은 렌즈 · 조건 바꿔 다시</button>
+          </div>
         </div>
       </section>
     </div>
 
+    <section id="phase-device-search" class="stage section-gap" hidden>
+      <header class="stage-head">
+        <p class="lab-eyebrow">03 · 의료기기 통계</p>
+        <h2 class="display">어떤 품목명을<br>볼까요?</h2>
+        <p class="lead">품목군이 아니라 <strong>품목명</strong>을 고릅니다. 추천 검색어를 누르거나 이름을 입력하세요. 등급·권역은 묻지 않습니다.</p>
+      </header>
+      <div class="panel search-panel">
+        <label for="deviceSearchInput">품목명 검색</label>
+        <input id="deviceSearchInput" type="search" autocomplete="off" placeholder="예: 창상, 프로브, 흡입기" list="deviceNameList">
+        <datalist id="deviceNameList"></datalist>
+        <p class="field-help">추천 검색어 (선택 품목군 우선)</p>
+        <div id="suggestChips" class="suggest-chips" role="list"></div>
+        <div class="btn-row" style="margin-top:20px">
+          <button type="button" class="btn btn-primary" id="applyDeviceSearch" disabled>품목 통계 보기</button>
+          <button type="button" class="btn btn-secondary" id="backToFirmFromSearch">기업군 리포트로</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="phase-device-report" class="report-spread section-gap" hidden>
+      <header class="stage-head">
+        <p class="lab-eyebrow">03 · 의료기기 통계</p>
+        <h2 class="title" id="deviceReportTitle">품목명 통계</h2>
+        <p id="deviceReportSubtitle" class="meta"></p>
+        <p class="meta">집계 통계·진단 화면입니다. 품목 등록정보 색인(index)이 아닙니다.</p>
+      </header>
+
+      <section class="chapter panel">
+        <h3 class="block-title">거시</h3>
+        <p id="deviceMacroSentence" class="block-copy"></p>
+        <div id="deviceMacroStrip" class="macro-strip"></div>
+      </section>
+
+      <section class="chapter panel section-gap">
+        <h3 class="block-title">통계</h3>
+        <div id="deviceStatMetrics" class="metric-strip metric-strip--2"></div>
+        <details class="flag-details">
+          <summary>취급 맥락 비중만 보기 (색인·허가 조회 아님)</summary>
+          <div id="deviceFlagStrip" class="flag-strip"></div>
+        </details>
+        <svg id="deviceTrendChart" class="trend-svg" viewBox="0 0 900 280" role="img" aria-label="품목명 월별 거래 활동"></svg>
+        <p class="meta">실선: 선택 품목명 평균 · 점선: 소속 품목군 평균</p>
+      </section>
+
+      <section class="chapter panel section-gap diagnosis-panel">
+        <h3 class="block-title">진단</h3>
+        <div id="deviceDiagnosisBody" class="diagnosis-body"></div>
+      </section>
+
+      <div class="cta-panel section-gap">
+        <h3 class="block-title">다음에 할 일</h3>
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" id="searchAnotherDevice">다른 품목명 검색</button>
+          <button type="button" class="btn btn-secondary" id="backToFirmFromDevice">기업군 리포트로</button>
+          <button type="button" class="btn btn-secondary" id="resetFromDevice">비교 기준부터 다시</button>
+        </div>
+      </div>
+    </section>
+
     <section id="suppressedPanel" class="panel empty-state" hidden>
-      <h2 class="title">선택 조건으로 비교군을 표시할 수 없습니다</h2>
-      <p class="lead">기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 넓히거나 업태 조건을 완화해 주세요.</p>
+      <p class="lab-eyebrow">공개 제한 · 비교 기준 재선택</p>
+      <h2 class="title">해당 기업군을 공개 기준으로 표시할 수 없습니다</h2>
+      <p class="lead">기업·기관 수가 공개 기준보다 적은 예시입니다. 권역을 「전국」으로 넓히거나 업종 조건을 완화해 주세요.</p>
       <button type="button" class="btn btn-secondary" id="resetSuppressed">비교 기준 다시 고르기</button>
     </section>
   </main>
 
   <footer class="lab-footer">
     <a href="./">혁신 시안 랩</a>
-    <span>Class 3 · synthetic cohort scenarios</span>
+    <span>Class 3 · firm then device sequel</span>
   </footer>
   <script src="./class3.js" defer></script>
 </body>

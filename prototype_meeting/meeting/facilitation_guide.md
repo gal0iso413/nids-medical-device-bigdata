@@ -82,47 +82,71 @@ Observe:
 
 ## Class 3 tasks (12–15 minutes)
 
+Prefer the **혁신 시안** (`innovation/class3.html`) for the full firm → 품목명 sequel.
+Regions are `수도권` / `비수도권` / `전국`.
+
+**Operator note (before Task 3):** 리포트 생성 후 **품목군 검토 지도**는 기본으로 열려 있습니다.
+진단 아래 「품목군 검토 지도 보기」로 바로 스크롤할 수 있습니다.
+
 ### Task 1: Define a profile
 
 Prompt:
 
-> 본인 업무와 가까운 업태, 권역, 품목군, 규모를 선택해 비교 기업군을 만들어 주세요.
+> 본인 업무와 가까운 업종, 권역(수도권·비수도권·전국), 품목군을 선택해 해당 기업군을 만들어 주세요.
 
 Observe:
 
 - Which category is difficult to choose?
 - Does the participant try to enter a company name?
-- Is “규모” understandable without exact financial values?
+- Is 품목군 understood as distinct from 품목명?
 
-### Task 2: Read position and change
+### Task 2: Read 거시 · 진단
 
 Prompt:
 
-> 비슷한 기업군과 비교해 현재 특징 한 가지와 최근 변화 한 가지를 말씀해 주세요.
+> 거시 요약과 진단(관측·해석·유의점)에서 현재 특징 한 가지와 최근 변화 한 가지를 말씀해 주세요.
 
 Observe:
 
 - Are range bands easier than exact ranks?
 - Does the participant confuse change with absolute size?
-- Is the comparison cohort definition trusted?
+- Is the diagnosis block clearer than question cards alone?
+- Do they notice the privacy one-liner (회사명·순위 비공개)?
 
-### Task 3: Identify a product question
+### Task 3: Read the product-group map
 
 Prompt:
 
-> 품목 변화 지도에서 확인할 품목 하나를 고르고 그 이유를 설명해 주세요.
+> 품목군 검토 지도(또는 「품목군 검토 지도 보기」)에서 확인할 품목군 하나를 고르고, 집중도·증감·공급자 규모를 구분해 설명해 주세요.
 
 Observe:
 
-- Can the participant interpret growth and concentration?
-- Does “기회” sound like an investment recommendation?
+- Can the participant read x=집중도, y=증감률, bubble=공급자 수(소·중·대)?
+- Do they treat the map as an investment recommendation?
 - Which additional context is needed?
 
-### Task 4: Check privacy
+### Task 4: 품목명 statistics sequel
+
+Prompt:
+
+> 「관심 의료기기 알아보기」에서 추천 검색어로 품목명을 고르고, 집계 통계가 색인(index)이 아닌 이유를 말씀해 주세요.
+
+Observe:
+
+- Do participants confuse 품목군 with 품목명?
+- Is the statistics framing clear (especially if they open 취급 맥락 비중)?
+- Would they want an index-style lookup elsewhere?
+
+### Optional (if time): Sparse / privacy demo
 
 Prompt:
 
 > 왜 특정 회사의 정확한 값과 순위를 볼 수 없는지 설명해 주세요.
+
+Facilitator demos:
+
+- `기타` + `비수도권` → suppress (공개 제한 화면, 02·03 단계 비활성)
+- `기타` + `수도권` → thin history (no trend)
 
 Observe:
 

@@ -36,13 +36,22 @@ is derived, user-relative information:
 
 ## Primary journey
 
-1. Select business type: manufacturer, importer, distributor/lessor, medical
-   institution, pharmacy/wholesaler, or other.
-2. Select broad region.
-3. Select one or more product groups.
-4. Select a non-sensitive size band.
-5. Review the generated anonymous cohort definition and cohort size.
-6. Inspect four result views.
+**Meeting innovation:** firm-first, then optional device statistics.
+
+1. Select 업종, region, and **품목군** (product group — not item name).
+2. Read the firm report Top-down: **거시 → 쉬운 사실 → 진단** (privacy one-liner visible).
+3. Review the **품목군 검토 지도** (open by default after report): concentration × growth × supplier-count bubbles.
+4. Optionally open **관심 의료기기 알아보기** (also available under diagnosis).
+5. Search **품목명** (item name) via typeahead / 추천 검색어 (about 4 chips; linked group first). Do not ask for
+   device class or region on this step.
+6. Read **품목명 aggregate statistics** (activity, concentration, supplier
+   scale, receiver mix, optional flag-prevalence details, diagnosis). This is **not** a
+   product-registration index card.
+
+**품목군 vs 품목명:** Firm filters use 품목군. Device sequel uses 품목명.
+They must not be conflated in UI copy or mock keys.
+
+Legacy / baseline tab views remain available on the existing prototype page.
 
 ## Result views
 
@@ -63,28 +72,21 @@ Percentile labels use plain language:
 
 They are not public firm rankings.
 
-### 품목 기회 지도
+### 품목군 검토 지도
 
-Axes:
+Axes (P1.5):
 
-- x: recent quantity or transaction growth
-- y: supplier concentration (HHI or top-share)
+- x: supplier concentration (HHI; low → high)
+- y: recent transaction-activity growth (%)
 
 Bubble:
 
-- aggregate market scale band
+- unique supplier count bands (소 &lt;15 · 중 15–34 · 대 ≥35), with on-chart legend
 
-Plain-language quadrants:
+The map is for review, not a forecast or investment recommendation.
+Avoid calling it an “opportunity” map in participant-facing Korean copy.
 
-- growing / many suppliers
-- growing / concentrated
-- slowing / many suppliers
-- slowing / concentrated
-
-The word “opportunity” means “area worth reviewing,” not a forecast or
-investment recommendation.
-
-### 비슷한 기업군
+### 기업군 유형 참고 (optional depth)
 
 Future production clustering may use normalized composition features:
 
@@ -99,8 +101,10 @@ Future production clustering may use normalized composition features:
 Display semantic profiles such as “regional hospital-focused suppliers.”
 Do not expose algorithm IDs like `cluster_2` as the primary label.
 
-If clustering is unstable, too small, or privacy-unsafe, fall back to rule-based
-cohorts defined by the selected profile.
+**Meeting wording (P0):** Primary UI says **해당 기업군** (filter-matched
+cohort). Clustering typology is secondary “기업군 유형 참고,” not the main
+promise. If clustering is unstable, too small, or privacy-unsafe, fall back to
+rule-based cohorts defined by the selected profile.
 
 ### 무엇을 확인할까요?
 
@@ -187,9 +191,15 @@ safe-harbor.
 It must not contain real identifiers or values copied from the active
 workbooks.
 
-The meeting prototype includes one deliberately suppressed profile
-(`기타 관련기관` + `제주권` + `소규모`) so experts can assess the privacy
-recovery flow.
+The meeting prototype includes deliberately sparse profile demos so experts can
+assess recovery flows:
+
+- `기타` + `비수도권` — full suppress (cohort below publication floor)
+- `기타` + `수도권` — thin history (metrics shown; monthly trend hidden)
+
+Profile regions are `수도권` / `비수도권` / `전국`. The opportunity map uses
+x = supplier concentration (HHI), y = recent activity growth, bubble = supplier
+count bands.
 
 ## Acceptance tasks
 

@@ -8,8 +8,9 @@ data or replace the Class 1/Class 3 analytical applications.
 
 - **Class 1:** Search a company, inspect its supply network, and understand why
   the system recommends review.
-- **Class 3:** Define a non-identifying business profile, compare it with an
-  anonymous cohort, and inspect product-market changes.
+- **Class 3:** Define a non-identifying business profile (업종·권역·품목군),
+  compare the matching cohort (거시·진단·반응), then optionally open 품목명
+  market statistics (not a product index).
 - **Shared:** One public-service visual system, glossary, privacy notices,
   meeting script, and feedback form.
 
