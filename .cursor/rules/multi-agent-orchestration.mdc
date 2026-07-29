@@ -12,11 +12,12 @@ alwaysApply: true
 | `shared_data/` | Read-only — transactional datasets |
 | `shared_docs/` | Read-only — domain docs (`official/`, `structured/`) |
 | `shared_utils/` | Immutable; import `AgentSlacker` only |
+| `prototype_meeting/` | PM-owned writable root — synthetic meeting prototypes and facilitation materials only |
 | `class_1_anomaly_detection/` | Agent 1 writable root (+ `PROGRESS.md`) |
 | `class_2_supply_forecast/` | Agent 2 writable root (+ `PROGRESS.md`) |
 | `class_3_impact_evaluation/` | Agent 3 writable root (+ `PROGRESS.md`) |
 
-Agents must not modify files outside their designated folder. `shared_docs/` is PM-maintained; agents read only.
+Agents must not modify files outside their designated folder. `shared_docs/` is PM-maintained; agents read only. The PM may maintain `prototype_meeting/` from Cursor Composer; background model agents must treat it as read-only.
 
 ## Documentation architecture (`shared_docs/`)
 
@@ -60,3 +61,5 @@ Governance stays in `.cursor/rules/`; do not duplicate in `.hermes/skills/`.
 ## Language
 
 English only across code, comments, logs, UI, Slack, and documentation updates inside agent folders.
+
+Korean is permitted for end-user UI copy and facilitator materials under `prototype_meeting/`; code, comments, logs, and developer instructions remain English.

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Class 1 유통 관계 확인</title>
+  <link rel="stylesheet" href="../shared/styles.css?v=20260726b">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+  <header class="service-header">
+    <div class="brand">
+      <a class="brand-mark" href="../" aria-label="프로토타입 홈">NIDS</a>
+      <div class="brand-text">
+        <p class="eyebrow">한국의료기기안전정보원</p>
+        <h1>유통 관계 확인</h1>
+      </div>
+    </div>
+    <div class="header-util">
+      <nav class="model-nav" aria-label="프로토타입 모델 선택">
+        <a href="./" aria-current="page">유통 관계 확인</a>
+        <a href="../class_3/">우리 기업군 동향</a>
+        <a href="../innovation/class1.html">혁신 시안</a>
+      </nav>
+      <span class="status-badge">간담회용 예시 데이터</span>
+    </div>
+  </header>
+
+  <nav class="flow-steps flow-steps--guided" id="flowSteps" aria-label="진행 안내">
+    <ol class="flow-steps-list">
+      <li>
+        <button type="button" class="flow-step flow-step--current" data-step="orient" data-target="section-orient" aria-current="step">
+          <span class="flow-step-num" aria-hidden="true">1</span>
+          <span class="flow-step-copy">
+            <span class="flow-step-title">위치 확인</span>
+            <span class="flow-step-hint">선택 업체가 어디에 있는지</span>
+          </span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="flow-step" data-step="change" data-target="section-change">
+          <span class="flow-step-num" aria-hidden="true">2</span>
+          <span class="flow-step-copy">
+            <span class="flow-step-title">변화 이해</span>
+            <span class="flow-step-hint">연결망과 최근 3개월 변화</span>
+          </span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="flow-step" data-step="check" data-target="section-check">
+          <span class="flow-step-num" aria-hidden="true">3</span>
+          <span class="flow-step-copy">
+            <span class="flow-step-title">확인할 사항</span>
+            <span class="flow-step-hint">우선 살펴볼 업체와 질문</span>
+          </span>
+        </button>
+      </li>
+    </ol>
+  </nav>
+
+  <main id="main" class="page-main">
+    <section class="page-title">
+      <div>
+        <p class="eyebrow">특정 업체 중심으로 확인</p>
+        <h2>복잡한 유통망에서 확인할 관계를 찾습니다</h2>
+        <p>업체를 검색하면 전후 연결, 최근 3개월 변화와 확인 필요 근거를 함께 보여줍니다.</p>
+      </div>
+    </section>
+
+    <div class="process-cue" aria-label="이용 흐름 안내">
+      <p>
+        <strong>이용 순서:</strong>
+        위치 확인 → 변화 이해 → 확인할 사항.
+        위 단계를 누르면 해당 결과로 이동합니다.
+      </p>
+    </div>
+
+    <section class="scope-banner" aria-label="데이터 범위 안내">
+      <strong>운영 판단에 사용하지 마세요</strong>
+      <span>모든 업체·기관·품목·점수·거래 수치는 생성된 예시입니다. AI 점수는 위법 확률이 아닙니다.</span>
+    </section>
+
+    <div class="layout">
+      <aside class="control-panel" aria-labelledby="search-heading">
+        <h3 id="search-heading">업체 찾기</h3>
+
+        <div class="field">
+          <label for="entitySearch">업체명</label>
+          <input id="entitySearch" type="search" value="C 유통" placeholder="예: C 유통">
+          <p class="field-help">이름 일부만 입력해도 찾을 수 있습니다.</p>
+        </div>
+
+        <div class="field">
+          <label for="entitySelect">검색 결과</label>
+          <select id="entitySelect" size="5" aria-describedby="searchCount"></select>
+          <p id="searchCount" class="field-help" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <label for="anchorMonth">3개월 기준 기간</label>
+          <select id="anchorMonth"></select>
+        </div>
+
+        <details class="advanced-settings">
+          <summary>상세 설정</summary>
+          <div class="advanced-body">
+            <div class="field">
+              <span id="depthLabel"><strong>연결 범위</strong></span>
+              <div class="segmented" role="group" aria-labelledby="depthLabel">
+                <button type="button" data-depth="1" aria-pressed="true">1단계</button>
+                <button type="button" data-depth="2" aria-pressed="false">2단계</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="edgeMeasure">선 굵기 기준</label>
+              <select id="edgeMeasure">
+                <option value="count">거래 보고 횟수</option>
+                <option value="quantity">공급 수량</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <div class="control-note">
+          화살표는 <strong>공급자 → 공급받은자</strong> 방향입니다. 원의 크기는 연결 업체 수를 뜻합니다.
+        </div>
+      </aside>
+
+      <div class="content-stack">
+        <section id="conclusionCard" class="conclusion-card" aria-live="polite">
+          <p class="eyebrow">결론부터</p>
+          <h3 id="conclusionHeadline">업체를 선택하면 요약이 표시됩니다</h3>
+          <p id="conclusionBody">왼쪽에서 업체를 검색하거나 예시 업체를 그대로 둔 채 결과를 확인하세요.</p>
+        </section>
+
+        <section class="panel" id="section-orient" aria-labelledby="summary-heading">
+          <p class="panel-step-tag">1단계 · 위치 확인</p>
+          <h3 id="summary-heading">선택 업체 위치</h3>
+          <p id="selectionDescription" class="panel-description"></p>
+          <div id="metricGrid" class="metric-grid"></div>
+        </section>
+
+        <section class="panel" id="section-change" aria-labelledby="network-heading">
+          <div class="graph-toolbar">
+            <div>
+              <p class="panel-step-tag">2단계 · 변화 이해</p>
+              <h3 id="network-heading">연결망과 최근 변화</h3>
+              <p id="graphDescription" class="panel-description"></p>
+            </div>
+            <button id="showMyCompanyButton" class="secondary-action" type="button">내 업체 보기</button>
+          </div>
+          <p id="myCompanyHelp" class="hub-help">
+            검색·연결망 탐색 후 다시 <strong>내가 등록한 업체</strong> 중심 화면으로 돌아갑니다.
+          </p>
+
+          <div class="network-layout">
+            <div>
+              <div class="network-wrap">
+                <svg id="networkSvg" class="network-svg" viewBox="0 0 900 560" role="img" aria-labelledby="network-heading graphDescription"></svg>
+              </div>
+              <ul class="legend" aria-label="네트워크 범례">
+                <li><span class="legend-swatch" style="background:#2869aa"></span>제조사</li>
+                <li><span class="legend-swatch" style="background:#6b4ea0"></span>수입사</li>
+                <li><span class="legend-swatch" style="background:#c16a16"></span>유통사</li>
+                <li><span class="legend-swatch" style="background:#2f7d4a"></span>의료기관</li>
+                <li><span class="legend-swatch" style="background:#fff;border-color:#a51d2d"></span>확인 필요</li>
+              </ul>
+            </div>
+
+            <aside id="entityDetail" class="detail-box" aria-live="polite"></aside>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="relationship-heading">
+          <h3 id="relationship-heading">주요 연결 관계</h3>
+          <p class="panel-description">현재 선택한 기간과 연결 범위에 포함된 관계입니다. 위쪽은 공급받음, 아래쪽은 공급함입니다.</p>
+          <div class="relationship-split">
+            <div class="relationship-block relationship-block--inbound">
+              <h4>공급받음 (이 업체로 들어옴)</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">연결 업체</th>
+                      <th scope="col">구분</th>
+                      <th scope="col">보고 횟수</th>
+                      <th scope="col">공급 수량</th>
+                      <th scope="col">주요 품목</th>
+                    </tr>
+                  </thead>
+                  <tbody id="inboundBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="relationship-block relationship-block--outbound">
+              <h4>공급함 (이 업체에서 나감)</h4>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">연결 업체</th>
+                      <th scope="col">구분</th>
+                      <th scope="col">보고 횟수</th>
+                      <th scope="col">공급 수량</th>
+                      <th scope="col">주요 품목</th>
+                    </tr>
+                  </thead>
+                  <tbody id="outboundBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="section-check" aria-labelledby="review-heading">
+          <p class="panel-step-tag">3단계 · 확인할 사항</p>
+          <h3 id="review-heading">확인할 사항</h3>
+          <p class="panel-description">
+            관계 구조를 학습하는 AI 점수가 높은 순으로 정렬합니다. 행을 선택하면 해당 업체 연결망이 열립니다.
+            점수는 확인 우선순위이며 위법·이상 여부를 자동 판정하지 않습니다.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">업체</th>
+                  <th scope="col">관계 AI 점수</th>
+                  <th scope="col">상태</th>
+                </tr>
+              </thead>
+              <tbody id="reviewBody"></tbody>
+            </table>
+          </div>
+          <details class="method-panel" style="margin-top:14px">
+            <summary>관계 AI 점수와 근거 설명</summary>
+            <div class="method-content">
+              <p><strong>무엇을 보여주나요?</strong> 연결 패턴과 업체 특성을 함께 학습한 모형(GNN)이, 비슷한 역할의 업체와 다른 정도를 점수로 줍니다. Model 1에서는 BC·가격·시차 등 개별 지표를 화면에 합치지 않고 <strong>관계 AI 점수만</strong> 사용합니다.</p>
+              <p><strong>근거 설명의 한계:</strong> 현재 파이프라인에는 GNN 전용 XAI(어떤 연결이 점수에 얼마나 기여했는지)가 없습니다. 그래서 「가장 큰 근거」 같은 문장은 제공하지 않고, 선택 업체의 <strong>연결 사실</strong>과 <strong>확인할 질문</strong>으로 보완합니다.</p>
+              <p><strong>어떻게 확인하나요?</strong> 점수가 높다고 해서 바로 문제라고 단정하지 않습니다. 연결망·주요 연결 관계·아래 확인 근거 패널을 함께 보고 현장에서 판단합니다.</p>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="evidence-heading">
+          <h3 id="evidence-heading">선택 업체 확인 근거</h3>
+          <div id="evidenceGrid" class="evidence-grid"></div>
+        </section>
+
+        <details class="method-panel">
+          <summary>분석 기준과 한계 보기</summary>
+          <div class="method-content">
+            <p><strong>내 업체 보기:</strong> 간담회 시나리오에서는 로그인 업체(예: C 유통)를 기억해 두었다가, 다른 업체를 탐색한 뒤 다시 내 연결망으로 돌아옵니다.</p>
+            <p><strong>관계 구조를 학습하는 AI(GNN):</strong> 확인 필요 업체 순서는 관계 AI 점수만 사용합니다. BC·가격·시차 등 개별 지표는 Model 1 화면에 합치지 않습니다.</p>
+            <p><strong>근거 설명:</strong> GNN XAI가 없어 속성별 기여 문장은 제공하지 않습니다. 연결 사실과 확인 질문으로 보완합니다.</p>
+            <ul id="limitationList"></ul>
+          </div>
+        </details>
+      </div>
+    </div>
+  </main>
+
+  <footer class="service-footer">
+    <a href="../">프로토타입 선택으로 돌아가기</a>
+    <span>Source: synthetic meeting scenarios · 2026</span>
+  </footer>
+
+  <script src="./app.js?v=20260726b" defer></script>
+</body>
+</html>

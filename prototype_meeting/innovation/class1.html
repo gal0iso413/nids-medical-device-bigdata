@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>유통 관계 확인 · 혁신 시안</title>
+  <link rel="stylesheet" href="./lab.css">
+  <link rel="stylesheet" href="./class1.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+  <header class="lab-header">
+    <a class="lab-brand" href="./">
+      <span class="lab-mark">NIDS</span>
+      <div class="lab-brand-text">
+        <p class="lab-eyebrow">혁신 시안 · 케이스 브리핑</p>
+        <h1>유통 관계 확인</h1>
+      </div>
+    </a>
+    <div class="lab-header-util">
+      <nav class="lab-nav" aria-label="모델 선택">
+        <a href="./class1.html" aria-current="page">유통 관계</a>
+        <a href="./class3.html">기업군 동향</a>
+        <a href="../class_1/">기존안</a>
+      </nav>
+      <span class="lab-badge">간담회용 예시 데이터</span>
+    </div>
+  </header>
+
+  <main id="main" class="lab-main class1-main">
+    <section class="scope-line">
+      <strong>운영 판단에 사용하지 마세요.</strong>
+      <span>관계 AI 점수는 위법 확률이 아닙니다. 모든 수치는 생성 예시입니다.</span>
+    </section>
+
+    <div class="class1-shell">
+      <aside class="class1-rail panel" aria-labelledby="search-heading">
+        <h2 id="search-heading" class="rail-title">업체 찾기</h2>
+        <div class="field">
+          <label for="entitySearch">업체명</label>
+          <input id="entitySearch" type="search" value="C 유통" placeholder="예: C 유통">
+        </div>
+        <div class="field">
+          <label for="entitySelect">검색 결과</label>
+          <select id="entitySelect" size="5" aria-describedby="searchCount"></select>
+          <p id="searchCount" class="field-help" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label for="anchorMonth">3개월 기준 기간</label>
+          <select id="anchorMonth"></select>
+        </div>
+        <button type="button" class="btn btn-secondary" id="showMyCompanyButton" style="width:100%">내 업체 보기</button>
+        <details class="rail-advanced">
+          <summary>상세 설정</summary>
+          <div class="field" style="margin-top:12px">
+            <label for="edgeMeasure">선 굵기 기준</label>
+            <select id="edgeMeasure">
+              <option value="count">거래 보고 횟수</option>
+              <option value="quantity">공급 수량</option>
+            </select>
+          </div>
+        </details>
+      </aside>
+
+      <div class="class1-workspace">
+        <ol class="progress-rail" id="progressRail" aria-label="진행 단계">
+          <li><button type="button" data-stage="brief" aria-current="step"><span class="step-num">01</span><span class="step-label">위치 확인</span></button></li>
+          <li><button type="button" data-stage="change"><span class="step-num">02</span><span class="step-label">변화 이해</span></button></li>
+          <li><button type="button" data-stage="graph"><span class="step-num">03</span><span class="step-label">연결망</span></button></li>
+          <li><button type="button" data-stage="packet"><span class="step-num">04</span><span class="step-label">확인할 사항</span></button></li>
+        </ol>
+
+        <section id="stage-brief" class="stage stage-enter" data-stage="brief">
+          <article class="hero-brief panel">
+            <div class="hero-brief-top">
+              <p class="lab-eyebrow">케이스 요약</p>
+              <span id="briefStatus" class="status status-normal">-</span>
+            </div>
+            <h2 id="brief-heading" class="display">업체를 선택하세요</h2>
+            <p id="briefHeadline" class="lead"></p>
+            <div id="briefMetrics" class="metric-strip"></div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-primary" data-go="change">최근 변화 보기</button>
+              <button type="button" class="btn btn-secondary" data-go="graph">연결망으로 바로 가기</button>
+            </div>
+          </article>
+        </section>
+
+        <section id="stage-change" class="stage" data-stage="change" hidden>
+          <header class="stage-head">
+            <p class="lab-eyebrow">02 · 변화 이해</p>
+            <h2 class="title">최근 3개월, 무엇이 달라졌나요</h2>
+            <p id="changeOverall" class="lead"></p>
+          </header>
+          <div id="changeBoard" class="change-reel"></div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-secondary" data-go="brief">이전</button>
+            <button type="button" class="btn btn-primary" data-go="graph">연결망에서 확인</button>
+          </div>
+        </section>
+
+        <section id="stage-graph" class="stage" data-stage="graph" hidden>
+          <header class="stage-head stage-head-row">
+            <div>
+              <p class="lab-eyebrow">03 · 연결망</p>
+              <h2 class="title">선택 업체 중심 연결망</h2>
+              <p id="graphDescription" class="meta"></p>
+            </div>
+          </header>
+          <div class="spotlight-bar" role="group" aria-label="연결 펼치기">
+            <button type="button" class="btn btn-secondary" id="expandOneHop" aria-pressed="false">1단계 펼치기</button>
+            <button type="button" class="btn btn-secondary" id="expandTwoHop" aria-pressed="false">2단계 펼치기</button>
+            <div class="seg" role="group" aria-label="이름 표시">
+              <button type="button" data-label-mode="review" aria-pressed="true">확인 필요만</button>
+              <button type="button" data-label-mode="all" aria-pressed="false">전체 이름</button>
+            </div>
+          </div>
+          <div class="spotlight-layout">
+            <div class="network-frame">
+              <svg id="networkSvg" class="network-svg" viewBox="0 0 980 560" role="img" aria-labelledby="graphDescription"></svg>
+              <ul class="legend" aria-label="범례">
+                <li><i style="background:#2869aa"></i>제조사</li>
+                <li><i style="background:#6b4ea0"></i>수입사</li>
+                <li><i style="background:#c16a16"></i>유통사</li>
+                <li><i style="background:#2f7d4a"></i>의료기관</li>
+                <li><i style="background:#fff;outline:2px solid #a51d2d"></i>확인 필요</li>
+              </ul>
+            </div>
+            <aside id="entityDetail" class="detail-rail panel panel-muted" aria-live="polite"></aside>
+          </div>
+          <div class="rel-split">
+            <div>
+              <h3>공급받음</h3>
+              <div class="table-wrap"><table><thead><tr><th>연결 업체</th><th>구분</th><th>보고</th><th>수량</th><th>품목</th></tr></thead><tbody id="inboundBody"></tbody></table></div>
+            </div>
+            <div>
+              <h3>공급함</h3>
+              <div class="table-wrap"><table><thead><tr><th>연결 업체</th><th>구분</th><th>보고</th><th>수량</th><th>품목</th></tr></thead><tbody id="outboundBody"></tbody></table></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-secondary" data-go="change">이전</button>
+            <button type="button" class="btn btn-primary" data-go="packet">확인할 사항 보기</button>
+          </div>
+        </section>
+
+        <section id="stage-packet" class="stage" data-stage="packet" hidden>
+          <header class="stage-head">
+            <p class="lab-eyebrow">04 · 확인할 사항</p>
+            <h2 class="title">우선 확인할 업체</h2>
+            <p class="lead">관계 구조를 학습하는 AI 점수 순입니다. 점수는 확인 우선순위이며 위법·이상을 자동 판정하지 않습니다.</p>
+          </header>
+          <div id="reviewCards" class="review-deck"></div>
+          <details class="depth-block">
+            <summary>더 많은 확인 대상</summary>
+            <div class="table-wrap"><table><thead><tr><th>업체</th><th>관계 AI 점수</th><th>상태</th></tr></thead><tbody id="reviewBody"></tbody></table></div>
+          </details>
+          <details class="depth-block">
+            <summary>분석 기준과 한계</summary>
+            <p><strong>관계 구조를 학습하는 AI(GNN):</strong> 확인 순서는 관계 AI 점수만 사용합니다.</p>
+            <ul id="limitationList"></ul>
+          </details>
+          <div class="btn-row">
+            <button type="button" class="btn btn-secondary" data-go="graph">이전</button>
+            <button type="button" class="btn btn-secondary" data-go="brief">케이스 요약으로</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="lab-footer">
+    <a href="./">혁신 시안 랩</a>
+    <span>Class 1 · synthetic meeting data</span>
+  </footer>
+  <script src="./class1.js?v=20260726b" defer></script>
+</body>
+</html>

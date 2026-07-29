@@ -11,6 +11,7 @@ shared_data/*.xlsx
 *.csv
 *.json
 class_*/output/
+*.zip
 
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
@@ -22,3 +23,5 @@ class_*/output/*
 # Progess files
 PROGRESS.md
 
+# Cursor
+.cursor/
