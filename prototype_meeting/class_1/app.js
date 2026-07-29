@@ -182,9 +182,9 @@ function renderConclusion() {
   elements.conclusionHeadline.textContent =
     `${node.name}은(는) ${node.type}으로, ${node.status} 상태입니다`;
   elements.conclusionBody.innerHTML =
-    `<strong>위치:</strong> ${selectedMonths()[0]}~${selectedMonths().at(-1)} 기준 ${state.depth}단계 연결망에 있습니다. ` +
-    `<strong>변화:</strong> 거래 보고는 ${changeLabel(countChange)}. ` +
-    `<strong>확인:</strong> 우선 살펴볼 업체 ${reviewCount}곳이 있습니다. ${node.reviewQuestion}`;
+    `<span class="conclusion-line"><strong>위치:</strong> ${selectedMonths()[0]}~${selectedMonths().at(-1)} 기준 ${state.depth}단계 연결망에 있습니다.</span>` +
+    `<span class="conclusion-line"><strong>변화:</strong> 거래 보고는 ${changeLabel(countChange)}.</span>` +
+    `<span class="conclusion-line"><strong>확인:</strong> 우선 살펴볼 업체 ${reviewCount}곳이 있습니다. ${node.reviewQuestion}</span>`;
 }
 
 function updateFlowSteps() {

@@ -545,6 +545,16 @@ input[type="text"] {
   font-size: var(--size-hint);
 }
 
+.conclusion-card .conclusion-line {
+  display: block;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.conclusion-card .conclusion-line:last-child {
+  margin-bottom: 0;
+}
+
 .conclusion-card strong {
   color: var(--ink);
 }
@@ -1283,6 +1293,112 @@ tbody tr:hover {
   .profile-steps {
     grid-template-columns: 1fr;
   }
+}
+
+.device-cta-box {
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border, #d7e0e8);
+  border-radius: 10px;
+  background: #f3faf9;
+}
+
+.device-search-box {
+  margin-bottom: 20px;
+}
+
+.suggest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #b7ddd9;
+  border-radius: 10px;
+  background: #e8f6f4;
+  color: #0b5a55;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chip:hover,
+.chip:focus-visible {
+  border-color: #003675;
+  outline: 2px solid color-mix(in srgb, #003675 30%, transparent);
+}
+
+.chip-meta {
+  font-size: 12px;
+  font-weight: 550;
+  color: #536273;
+}
+
+.device-report {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #d7e0e8);
+}
+
+.metric-grid-spaced {
+  margin-top: 12px;
+}
+
+.flag-strip {
+  padding: 12px 14px;
+}
+
+.flag-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flag-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.diagnosis-block {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #d7e0e8);
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+
+.diagnosis-dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.diagnosis-dl dt {
+  font-size: 12px;
+  font-weight: 800;
+  color: #536273;
+  margin-bottom: 4px;
+}
+
+.diagnosis-dl dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.tab-list button.is-disabled,
+.tab-list button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -24,8 +24,6 @@ const elements = {
   phaseDeviceReport: document.getElementById("phase-device-report"),
   reportSubtitle: document.getElementById("reportSubtitle"),
   macroSentence: document.getElementById("macroSentence"),
-  macroStrip: document.getElementById("macroStrip"),
-  positionSentence: document.getElementById("positionSentence"),
   reportMetrics: document.getElementById("reportMetrics"),
   changeSentence: document.getElementById("changeSentence"),
   thinHistoryNotice: document.getElementById("thinHistoryNotice"),
@@ -201,11 +199,11 @@ function displayMetricValue(metric) {
   if (metric.label === "거래 활동 변화") return growthBand(Number.parseFloat(metric.value));
   if (metric.label === "취급 품목 폭") {
     const value = Number.parseInt(metric.value, 10);
-    return `${Math.max(1, value - 1)}~${value + 1}개 군`;
+    return `${Math.max(1, value - 4)}~${value + 4}개`;
   }
-  if (metric.label === "거래처 유형 폭") {
+  if (metric.label === "거래처 폭") {
     const value = Number.parseInt(metric.value, 10);
-    return `${Math.max(1, value - 1)}~${value + 1}개 유형`;
+    return `${Math.max(1, value - 4)}~${value + 4}개`;
   }
   return metric.value;
 }
@@ -348,7 +346,7 @@ function buildFirmDiagnosis() {
   const selected =
     scenario().opportunities.find((record) => record.product === state.profile.productGroup) ||
     scenario().opportunities[0];
-  const observed = `해당 기업군 ${cohortCountDisplay()} 규모에서 거래 활동은 ${activity.position}, 관심 품목군(${state.profile.productGroup}) 최근 변화는 ${growthBand(selected.growthPct)}입니다.`;
+  const observed = `해당 기업군 ${cohortCountDisplay()} 규모에서 거래 활동은 ${activity.position}, 관심 품목군(${state.profile.productGroup}) 최근 변화는 ${growthBand(selected.growthPct)}, 공급자 집중도는 ${concentrationBand(selected.hhi)}입니다.`;
   let interpretation = "선택 조건 평균이 같은 업종·권역 기준선과 비슷한 흐름입니다.";
   if (activity.position.includes("상위")) {
     interpretation = "같은 조건 기업군 대비 거래 활동이 상위 구간에 있습니다.";
@@ -357,10 +355,12 @@ function buildFirmDiagnosis() {
   }
   if (selected.hhi > 0.25) {
     interpretation += " 관심 품목군은 공급자 집중도가 높은 편입니다.";
+  } else if (selected.growthPct < 0) {
+    interpretation += " 관심 품목군 활동은 최근 감소 구간에 있습니다.";
   }
   const caution = isThinHistory()
     ? "비교 기간이 짧아 추이 해석은 제한적으로 보세요. 권역·업종 조건을 넓혀 재확인할 수 있습니다."
-    : "사업 결과가 보장되지 않습니다. 신규 거래처·보고 방식 변화 여부를 내부에서 검증해 보세요.";
+    : "사업 결과가 보장되지 않습니다. 회사명·정확한 순위는 공개하지 않으며, 신규 거래처·보고 방식 변화는 내부에서 검증해 보세요.";
   return { observed, interpretation, caution };
 }
 
@@ -378,7 +378,8 @@ function buildDeviceDiagnosis(item) {
   return {
     observed,
     interpretation,
-    caution: `취급 맥락(집계): ${item.flagPrevalence.classMode}. 허가·UDI 색인이 아니라 통계 요약입니다.`,
+    caution:
+      "이 화면은 공급·거래 집계 통계 요약입니다. 품목 허가·UDI·모델 목록 같은 등록정보 색인(index)이 아닙니다.",
   };
 }
 
@@ -402,14 +403,7 @@ function renderFirmReport() {
     `${state.profile.region} · ${state.profile.businessType} · 품목군 ${state.profile.productGroup}`;
 
   elements.macroSentence.textContent =
-    `${primary.description} 해당 기업군 규모는 ${cohortCountDisplay()}입니다.`;
-  elements.macroStrip.innerHTML = `
-    <article><p class="metric-label">기업군 규모</p><p class="metric-value">${cohortCountDisplay()}</p></article>
-    <article><p class="metric-label">거래 활동</p><p class="metric-value">${displayMetricValue(activity)}</p><p class="metric-note ${positionClass(activity.position)}">${activity.position}</p></article>
-    <article><p class="metric-label">품목 폭</p><p class="metric-value">${displayMetricValue(breadth)}</p></article>`;
-
-  elements.positionSentence.textContent =
-    `해당 기업군에서 거래 활동은 ${activity.position}에 해당합니다. 취급 품목 폭은 ${displayMetricValue(breadth)} 수준입니다.`;
+    `${primary.description} 해당 기업군 규모는 ${cohortCountDisplay()}입니다. 거래 활동은 ${activity.position}, 취급 품목(품목명) 폭은 ${displayMetricValue(breadth)} 수준입니다.`;
   elements.reportMetrics.innerHTML = metrics
     .map(
       (metric) => `

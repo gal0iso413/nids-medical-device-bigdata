@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Class 3 우리 기업군 동향</title>
-  <link rel="stylesheet" href="../shared/styles.css">
+  <link rel="stylesheet" href="../shared/styles.css?v=20260726b">
 </head>
 <body>
   <a class="skip-link" href="#main">본문 바로가기</a>
@@ -39,7 +39,7 @@
       <div>
         <p class="eyebrow">회사명을 입력하지 않는 맞춤 비교</p>
         <h2>해당 기업군 속 위치와 시장 변화를 봅니다</h2>
-        <p>업종과 관심 품목군을 선택하면 익명 기업군 비교, 품목군 변화와 확인할 질문을 제공합니다. 품목명 통계 이어보기는 <a href="../innovation/class3.html">혁신 시안</a>에서 확인할 수 있습니다.</p>
+        <p>업종과 관심 품목군을 선택하면 익명 기업군 비교, 품목군 변화와 확인할 질문을 제공합니다. 이어서 <strong>품목명 통계</strong> 탭으로 특정 품목을 볼 수 있습니다. 단계형 안내는 <a href="../innovation/class3.html">혁신 시안</a>을 참고하세요.</p>
       </div>
     </section>
 
@@ -70,7 +70,7 @@
         <div class="field">
           <label for="productGroup">3. 관심 품목군</label>
           <select id="productGroup"></select>
-          <p class="field-help">의료기기 분류 체계(일반·체외진단·디지털)의 <strong>품목군</strong>을 선택합니다. 개별 품목명 조회는 혁신 시안에서 이어봅니다.</p>
+          <p class="field-help">의료기기 분류 체계(일반·체외진단·디지털)의 <strong>품목군</strong>을 선택합니다. 개별 <strong>품목명</strong>은 「품목명 통계」 탭에서 이어봅니다.</p>
         </div>
 
         <button id="applyProfile" class="primary-action apply-profile-btn" type="button">
@@ -98,6 +98,7 @@
             <button id="tab-questions" role="tab" aria-selected="false" aria-controls="panel-questions">확인할 사항</button>
             <button id="tab-opportunity" role="tab" aria-selected="false" aria-controls="panel-opportunity">품목군 변화 지도</button>
             <button id="tab-groups" role="tab" aria-selected="false" aria-controls="panel-groups">기업군 유형 참고</button>
+            <button id="tab-device" role="tab" aria-selected="false" aria-controls="panel-device">품목명 통계</button>
           </div>
 
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
@@ -121,6 +122,10 @@
                   <p><strong>변화와 규모를 구분</strong> — 거래가 늘었다는 것은 현재 규모가 크다는 뜻과 다릅니다. 성장률과 절대 규모는 별도 지표로 봅니다.</p>
                 </div>
               </details>
+            </div>
+            <div class="device-cta-box">
+              <p class="panel-description">기업군 요약을 본 뒤, 특정 <strong>품목명</strong> 집계 통계로 이어볼 수 있습니다. 허가·UDI 색인이 아닙니다.</p>
+              <button type="button" class="primary-action" id="openDeviceTab">관심 의료기기 알아보기</button>
             </div>
           </div>
 
@@ -158,6 +163,54 @@
               </div>
             </details>
           </div>
+
+          <div id="panel-device" role="tabpanel" aria-labelledby="tab-device" hidden>
+            <h4>품목명 집계 통계</h4>
+            <p class="panel-description">
+              품목군이 아니라 <strong>품목명</strong>을 고릅니다. 집계 통계·진단 화면이며 품목 등록정보 색인(index)이 아닙니다.
+              단계형 안내는 <a href="../innovation/class3.html">혁신 시안</a>에서도 확인할 수 있습니다.
+            </p>
+            <div class="device-search-box">
+              <div class="field">
+                <label for="deviceSearchInput">품목명 검색</label>
+                <input id="deviceSearchInput" type="search" autocomplete="off" placeholder="예: 창상, 프로브, 흡입기" list="deviceNameList">
+                <datalist id="deviceNameList"></datalist>
+              </div>
+              <p class="field-help">추천 검색어 (선택 품목군 우선)</p>
+              <div id="suggestChips" class="suggest-chips" role="list"></div>
+              <div class="choice-actions" style="margin-top:16px">
+                <button type="button" class="primary-action" id="applyDeviceSearch" disabled>품목 통계 보기</button>
+                <button type="button" class="secondary-action" id="backToFirmFromDevice">기업군 결과로</button>
+              </div>
+            </div>
+
+            <div id="deviceReport" class="device-report" hidden>
+              <header class="device-report-head">
+                <h4 id="deviceReportTitle">품목명 통계</h4>
+                <p id="deviceReportSubtitle" class="panel-description"></p>
+              </header>
+              <p id="deviceMacroSentence" class="panel-description"></p>
+              <div id="deviceMacroStrip" class="metric-grid"></div>
+              <div id="deviceStatMetrics" class="metric-grid metric-grid-spaced"></div>
+              <details class="method-panel method-panel-spaced">
+                <summary>취급 맥락 비중만 보기 (색인·허가 조회 아님)</summary>
+                <div id="deviceFlagStrip" class="flag-strip"></div>
+              </details>
+              <div class="chart chart-spaced">
+                <h4>월별 거래 활동</h4>
+                <svg id="deviceTrendChart" viewBox="0 0 900 280" role="img" aria-label="품목명 월별 거래 활동"></svg>
+                <p class="chart-caption">실선: 선택 품목명 평균 · 점선: 소속 품목군 평균</p>
+              </div>
+              <section class="diagnosis-block" aria-labelledby="device-diagnosis-heading">
+                <h4 id="device-diagnosis-heading">진단</h4>
+                <div id="deviceDiagnosisBody"></div>
+              </section>
+              <div class="choice-actions">
+                <button type="button" class="primary-action" id="searchAnotherDevice">다른 품목명 검색</button>
+                <button type="button" class="secondary-action" id="backToFirmFromDeviceReport">기업군 결과로</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="privacy-panel" aria-labelledby="privacy-heading">
@@ -186,6 +239,6 @@
     <span>Source: synthetic cohort scenarios · 2026</span>
   </footer>
 
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=20260726b" defer></script>
 </body>
 </html>

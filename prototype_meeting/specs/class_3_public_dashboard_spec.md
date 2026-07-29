@@ -36,12 +36,14 @@ is derived, user-relative information:
 
 ## Primary journey
 
-**Meeting innovation:** firm-first, then optional device statistics.
+**Meeting innovation:** firm-first, then optional device statistics (guided wizard).
+
+**Meeting baseline (P2):** same firm profile, then optional **품목명 통계** tab (tabbed IA kept as control contrast).
 
 1. Select 업종, region, and **품목군** (product group — not item name).
-2. Read the firm report Top-down: **거시 → 쉬운 사실 → 진단** (privacy one-liner visible).
-3. Review the **품목군 검토 지도** (open by default after report): concentration × growth × supplier-count bubbles.
-4. Optionally open **관심 의료기기 알아보기** (also available under diagnosis).
+2. Read the firm report Top-down: **거시**(metrics + time-series 변화) → **진단** (innov) or overview + conclusion (baseline).
+3. Review the **품목군 검토 지도** (innov opens by default after report): concentration × growth × supplier-count bubbles.
+4. Optionally open **관심 의료기기 알아보기** (innov CTA / baseline overview CTA or 품목명 통계 tab).
 5. Search **품목명** (item name) via typeahead / 추천 검색어 (about 4 chips; linked group first). Do not ask for
    device class or region on this step.
 6. Read **품목명 aggregate statistics** (activity, concentration, supplier
@@ -51,7 +53,7 @@ is derived, user-relative information:
 **품목군 vs 품목명:** Firm filters use 품목군. Device sequel uses 품목명.
 They must not be conflated in UI copy or mock keys.
 
-Legacy / baseline tab views remain available on the existing prototype page.
+Legacy / baseline tab views remain available on the existing prototype page; both pages share `deviceItems` in mock data.
 
 ## Result views
 
@@ -60,9 +62,10 @@ Legacy / baseline tab views remain available on the existing prototype page.
 - cohort size
 - transaction-direction trend
 - supplied-quantity trend
-- active-product breadth
-- receiver-type breadth
-- percentile band against the cohort
+- active-product breadth (**품목명** count, not 품목군 count)
+- counterparty breadth (**거래처** count, not business-type count)
+- percentile band of the **selected cohort aggregate** against a **wider reference**
+  distribution (not firm ranks inside the cohort)
 
 Percentile labels use plain language:
 
@@ -70,7 +73,10 @@ Percentile labels use plain language:
 - middle 50%
 - upper 25%
 
-They are not public firm rankings.
+They describe where the **cohort's aggregate** sits in a broader reference
+distribution (e.g. same metric across all cohorts or a wider population).
+They are not public firm rankings inside the cohort. Authenticated “내 회사”
+vs peer-within-cohort percentiles are a separate later mode.
 
 ### 품목군 검토 지도
 

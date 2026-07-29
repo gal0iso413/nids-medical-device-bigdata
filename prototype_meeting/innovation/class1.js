@@ -245,8 +245,7 @@ function renderBrief() {
   elements.briefHeading.textContent = `${focal.name}`;
   elements.briefStatus.textContent = displayStatus(focal.status);
   elements.briefStatus.className = `status ${statusClass(focal.status)}`;
-  elements.briefHeadline.textContent =
-    `${focal.type} · ${selectedMonths()[0]}~${selectedMonths().at(-1)} · ${changeLabel(countChange)}. ${focal.reviewQuestion}`;
+  elements.briefHeadline.textContent = `${selectedMonths()[0]}~${selectedMonths().at(-1)}`;
 
   const cards = [
     ["공급해 온 업체", `${inbound.size}개`, "들어오는 연결"],

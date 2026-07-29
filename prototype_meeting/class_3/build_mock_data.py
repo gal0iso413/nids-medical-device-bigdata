@@ -59,42 +59,82 @@ DATA_QUALITY_RULES = [
     },
 ]
 
-# top7-style 품목명 exemplars (item name ≠ 품목군). Mapped to taxonomy groups for suggestions.
+# top7-style 품목명 exemplars + coverage fillers (item name ≠ 품목군).
 DEVICE_ITEM_SEEDS = [
     {
         "name": "국소 폼제 창상 피복재",
         "productGroup": "A2. 의료용품",
-        "suggestTags": ["창상", "피복재", "폼제"],
+        "suggestTags": ["창상", "피복재", "폼제", "드레싱"],
     },
     {
         "name": "비가열식 흡입기",
         "productGroup": "A1. 기구/기계",
-        "suggestTags": ["흡입기", "호흡"],
+        "suggestTags": ["흡입기", "호흡", "기구"],
     },
     {
         "name": "비흡수성체내용스태플",
         "productGroup": "A1. 기구/기계",
-        "suggestTags": ["스태플", "체내용"],
+        "suggestTags": ["스태플", "체내용", "수술"],
     },
     {
         "name": "생체재질인공심장판막",
         "productGroup": "A1. 기구/기계",
-        "suggestTags": ["심장판막", "이식"],
+        "suggestTags": ["심장판막", "이식", "인공"],
     },
     {
         "name": "의료기구용 클립",
         "productGroup": "A1. 기구/기계",
-        "suggestTags": ["클립", "기구"],
+        "suggestTags": ["클립", "기구", "지혈"],
     },
     {
         "name": "이식형의약품주입기",
         "productGroup": "A1. 기구/기계",
-        "suggestTags": ["주입기", "이식형"],
+        "suggestTags": ["주입기", "이식형", "펌프"],
     },
     {
         "name": "체외형 범용 프로브",
         "productGroup": "B2. 임상화학검사기기",
-        "suggestTags": ["프로브", "체외", "검사"],
+        "suggestTags": ["프로브", "체외", "검사", "임상화학"],
+    },
+    {
+        "name": "치과용 복합레진",
+        "productGroup": "A3. 치과재료",
+        "suggestTags": ["치과", "레진", "충전"],
+    },
+    {
+        "name": "자동 검체분주기",
+        "productGroup": "B1. 검체전처리기기",
+        "suggestTags": ["검체", "분주", "전처리"],
+    },
+    {
+        "name": "면역형광 분석시약 카트리지",
+        "productGroup": "B3. 면역검사기기",
+        "suggestTags": ["면역", "형광", "카트리지"],
+    },
+    {
+        "name": "혈액형 판정 카드",
+        "productGroup": "B4. 수혈의학검사기기",
+        "suggestTags": ["혈액형", "수혈", "카드"],
+    },
+    {
+        "name": "미생물 배양 모니터링 모듈",
+        "productGroup": "B5. 임상미생물검사기기",
+        "suggestTags": ["미생물", "배양", "모듈"],
+    },
+    {
+        "name": "핵산증폭 검사 키트",
+        "productGroup": "B6. 분자진단기기",
+        "suggestTags": ["핵산", "증폭", "분자진단"],
+    },
+    {
+        "name": "조직슬라이드 스캐너",
+        "productGroup": "B7. 조직병리검사기기",
+        "suggestTags": ["조직", "슬라이드", "병리"],
+    },
+    {
+        "name": "원격 환자모니터링 소프트웨어",
+        "productGroup": "C. 디지털 의료기기",
+        "suggestTags": ["원격", "모니터링", "소프트웨어", "디지털"],
     },
 ]
 
@@ -237,15 +277,15 @@ def build_payload(seed: int = 3032026) -> dict:
                 },
                 {
                     "label": "취급 품목 폭",
-                    "value": f"{rng.randint(4, 12)}개 군",
+                    "value": f"{rng.randint(28, 86)}개",
                     "position": rng.choice(["상위 25%", "중간 50%"]),
-                    "definition": "기업군에서 활동이 확인된 품목군 수",
+                    "definition": "기업군에서 활동이 확인된 고유 품목명 수",
                 },
                 {
-                    "label": "거래처 유형 폭",
-                    "value": f"{rng.randint(2, 5)}개 유형",
+                    "label": "거래처 폭",
+                    "value": f"{rng.randint(18, 72)}개",
                     "position": rng.choice(["중간 50%", "상위 25%"]),
-                    "definition": "제조·유통·의료기관 등 거래처 유형 수",
+                    "definition": "기업군에서 거래가 확인된 고유 거래처(상대 업체) 수",
                 },
                 {
                     "label": "공급 수량 방향",
@@ -266,7 +306,7 @@ def build_payload(seed: int = 3032026) -> dict:
                     "name": "다품목 안정 거래형",
                     "share": rng.randint(20, 31),
                     "description": "여러 품목군을 취급하며 월별 변화가 크지 않은 기업군",
-                    "traits": ["품목 폭 넓음", "변동성 낮음", "거래처 유형 다양"],
+                    "traits": ["품목명 폭 넓음", "변동성 낮음", "거래처 수 많음"],
                 },
                 {
                     "name": "지역 거래처 집중형",

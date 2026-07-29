@@ -10,7 +10,8 @@ data or replace the Class 1/Class 3 analytical applications.
   the system recommends review.
 - **Class 3:** Define a non-identifying business profile (업종·권역·품목군),
   compare the matching cohort (거시·진단·반응), then optionally open 품목명
-  market statistics (not a product index).
+  market statistics (not a product index) — guided wizard on innov, or
+  **품목명 통계** tab on the baseline control page.
 - **Shared:** One public-service visual system, glossary, privacy notices,
   meeting script, and feedback form.
 
@@ -44,7 +45,7 @@ python prototype_meeting/class_3/build_mock_data.py
 - `class_3/`: anonymous cohort dashboard control prototype
 - `research/`: sourced platform and feasibility findings
 - `specs/`: product, UX, analytics, and privacy specifications
-- `meeting/`: facilitator guide and feedback form
+- `meeting/`: facilitator guide, Class 1/3 Korean user/index guides, and feedback form
 
 ## Governance
 

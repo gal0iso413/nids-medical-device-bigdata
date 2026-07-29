@@ -6,6 +6,7 @@ const state = {
     productGroup: "B2. 임상화학검사기기",
   },
   profileApplied: false,
+  selectedDeviceName: null,
 };
 
 const elements = {
@@ -14,6 +15,7 @@ const elements = {
   productGroup: document.getElementById("productGroup"),
   applyProfile: document.getElementById("applyProfile"),
   profileSteps: document.getElementById("profileSteps"),
+  conclusionCard: document.getElementById("conclusionCard"),
   conclusionHeadline: document.getElementById("conclusionHeadline"),
   conclusionBody: document.getElementById("conclusionBody"),
   flowSteps: document.getElementById("flowSteps"),
@@ -30,12 +32,37 @@ const elements = {
   privacyMessage: document.getElementById("privacyMessage"),
   hiddenFieldList: document.getElementById("hiddenFieldList"),
   limitationList: document.getElementById("limitationList"),
+  openDeviceTab: document.getElementById("openDeviceTab"),
+  deviceSearchInput: document.getElementById("deviceSearchInput"),
+  deviceNameList: document.getElementById("deviceNameList"),
+  suggestChips: document.getElementById("suggestChips"),
+  applyDeviceSearch: document.getElementById("applyDeviceSearch"),
+  backToFirmFromDevice: document.getElementById("backToFirmFromDevice"),
+  backToFirmFromDeviceReport: document.getElementById("backToFirmFromDeviceReport"),
+  searchAnotherDevice: document.getElementById("searchAnotherDevice"),
+  deviceReport: document.getElementById("deviceReport"),
+  deviceReportTitle: document.getElementById("deviceReportTitle"),
+  deviceReportSubtitle: document.getElementById("deviceReportSubtitle"),
+  deviceMacroSentence: document.getElementById("deviceMacroSentence"),
+  deviceMacroStrip: document.getElementById("deviceMacroStrip"),
+  deviceStatMetrics: document.getElementById("deviceStatMetrics"),
+  deviceFlagStrip: document.getElementById("deviceFlagStrip"),
+  deviceTrendChart: document.getElementById("deviceTrendChart"),
+  deviceDiagnosisBody: document.getElementById("deviceDiagnosisBody"),
   tabs: [...document.querySelectorAll('[role="tab"]')],
   panels: [...document.querySelectorAll('[role="tabpanel"]')],
 };
 
 function scenario() {
   return state.data.scenarios[state.profile.businessType];
+}
+
+function deviceItems() {
+  return state.data.deviceItems || [];
+}
+
+function findDevice(name) {
+  return deviceItems().find((item) => item.name === name) || null;
 }
 
 function resolveDataQuality() {
@@ -130,11 +157,11 @@ function displayMetricValue(metric) {
   }
   if (metric.label === "취급 품목 폭") {
     const value = Number.parseInt(metric.value, 10);
-    return `${Math.max(1, value - 1)}~${value + 1}개 군`;
+    return `${Math.max(1, value - 4)}~${value + 4}개`;
   }
-  if (metric.label === "거래처 유형 폭") {
+  if (metric.label === "거래처 폭") {
     const value = Number.parseInt(metric.value, 10);
-    return `${Math.max(1, value - 1)}~${value + 1}개 유형`;
+    return `${Math.max(1, value - 4)}~${value + 4}개`;
   }
   return metric.value;
 }
@@ -157,9 +184,10 @@ function renderConclusion() {
   elements.conclusionHeadline.textContent =
     `${state.profile.region} ${state.profile.businessType} 기준, 거래 활동은 ${activity.position}에 해당합니다`;
   elements.conclusionBody.innerHTML =
-    `<strong>위치:</strong> ${state.profile.productGroup} 관심 해당 기업군 ${cohortCountDisplay()} 규모. ` +
-    `<strong>변화:</strong> 거래 활동 ${displayMetricValue(activity)} (${activity.position}). ` +
-    `<strong>확인:</strong> 취급 품목 폭은 ${displayMetricValue(breadth)} 수준입니다.${thinNote} 아래 「확인할 사항」 탭에서 질문을 확인하세요.`;
+    `<span class="conclusion-line"><strong>위치:</strong> ${state.profile.productGroup} 관심 해당 기업군 ${cohortCountDisplay()} 규모.</span>` +
+    `<span class="conclusion-line"><strong>변화:</strong> 거래 활동 ${displayMetricValue(activity)} (${activity.position}).</span>` +
+    `<span class="conclusion-line"><strong>확인:</strong> 취급 품목(품목명) 폭은 ${displayMetricValue(breadth)} 수준입니다.${thinNote} ` +
+    `「확인할 사항」 또는 「품목명 통계」 탭에서 이어서 살펴보세요.</span>`;
 }
 
 function updateProfileSteps() {
@@ -190,7 +218,7 @@ function updateFlowSteps() {
   const activeTab = elements.tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
   const tabId = activeTab?.id || "tab-overview";
   let active = "orient";
-  if (tabId === "tab-questions") active = "check";
+  if (tabId === "tab-questions" || tabId === "tab-device") active = "check";
   else if (state.profileApplied) {
     const resultTop = elements.resultPanel?.getBoundingClientRect().top ?? 9999;
     active = resultTop < window.innerHeight * 0.45 ? "change" : "orient";
@@ -641,8 +669,8 @@ function renderQuestions() {
       text: "선택 권역의 기업 수가 적으면 「전국」으로 범위를 넓혀 보세요. 수도권·비수도권·전국 중 업무에 맞는 기준을 검토해 보세요.",
     },
     {
-      title: "기업군 정의 확인",
-      text: `${state.profile.businessType}·${state.profile.productGroup} 조건이 실제 동종 기업을 잘 묶는지, 추가로 필요한 구분 기준이 있는지 확인해 보세요.`,
+      title: "품목명으로 이어보기",
+      text: "품목군 다음 단계로 「품목명 통계」 탭에서 관심 품목명 집계를 보면 더 구체적인 시장 위치를 확인할 수 있습니다. 색인(index) 조회가 아닙니다.",
     },
   ];
   if (isThinHistory()) {
@@ -665,6 +693,230 @@ function renderQuestions() {
     .join("");
 }
 
+function suggestedDevices() {
+  const all = deviceItems();
+  const linked = all.filter((item) => item.productGroup === state.profile.productGroup);
+  const rest = all.filter((item) => item.productGroup !== state.profile.productGroup);
+  return [...linked, ...rest];
+}
+
+function buildDeviceDiagnosis(item) {
+  const stats = item.stats;
+  const observed = `${item.name}의 최근 활동은 ${growthBand(stats.growthPct)}, 공급자 집중도는 ${stats.concentrationBand}, 공급자 규모는 ${stats.supplierCountBand} 수준입니다.`;
+  let interpretation = "소속 품목군 대비 비중과 활동 방향을 함께 보면 시장 위치가 드러납니다.";
+  if (stats.growthPct >= 10 && stats.hhi > 0.25) {
+    interpretation = "활동이 늘면서 소수 공급자 집중도도 높은 구간입니다. 대체 조달·보고 변화를 점검할 여지가 있습니다.";
+  } else if (stats.growthPct < 0) {
+    interpretation = "최근 활동이 줄어든 구간입니다. 수요 변화인지 보고 공백인지 구분해 볼 필요가 있습니다.";
+  } else if (stats.hhi <= 0.15) {
+    interpretation = "공급자가 비교적 다양한 편입니다. 경쟁·유통 경로가 넓은 품목으로 읽을 수 있습니다.";
+  }
+  return {
+    observed,
+    interpretation,
+    caution:
+      "이 화면은 공급·거래 집계 통계 요약입니다. 품목 허가·UDI·모델 목록 같은 등록정보 색인(index)이 아닙니다.",
+  };
+}
+
+function renderDiagnosis(container, diagnosis) {
+  if (!container) return;
+  container.innerHTML = `
+    <dl class="diagnosis-dl">
+      <div><dt>관측</dt><dd>${diagnosis.observed}</dd></div>
+      <div><dt>해석</dt><dd>${diagnosis.interpretation}</dd></div>
+      <div><dt>유의점</dt><dd>${diagnosis.caution}</dd></div>
+    </dl>`;
+}
+
+function renderDeviceTrendChart(data) {
+  const svg = elements.deviceTrendChart;
+  if (!svg || !data || data.length < 2) {
+    if (svg) svg.replaceChildren();
+    return;
+  }
+  const solidKey = "itemAverage";
+  const dashedKey = "groupAverage";
+  const width = 900;
+  const height = 280;
+  const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+  const plotWidth = width - margin.left - margin.right;
+  const allValues = data.flatMap((row) => [row[solidKey], row[dashedKey]]);
+  const min = Math.floor(Math.min(...allValues) * 0.88);
+  const max = Math.ceil(Math.max(...allValues) * 1.08);
+  const x = (index) => margin.left + (index / (data.length - 1)) * plotWidth;
+  const y = (value) => margin.top + ((max - value) / (max - min || 1)) * (height - margin.top - margin.bottom);
+  const pathFor = (key) =>
+    data.map((row, index) => `${index ? "L" : "M"} ${x(index)} ${y(row[key])}`).join(" ");
+
+  svg.replaceChildren();
+  for (let tick = 0; tick <= 3; tick += 1) {
+    const value = min + ((max - min) * tick) / 3;
+    const yPos = y(value);
+    svg.append(
+      svgElement("line", {
+        x1: margin.left,
+        y1: yPos,
+        x2: width - margin.right,
+        y2: yPos,
+        stroke: "#d7e0e8",
+      }),
+      textElement(new Intl.NumberFormat("ko-KR", { notation: "compact" }).format(value), {
+        x: margin.left - 8,
+        y: yPos + 4,
+        "text-anchor": "end",
+        fill: "#536273",
+        "font-size": 12,
+      }),
+    );
+  }
+  data.forEach((row, index) => {
+    svg.append(
+      textElement(row.month.slice(2), {
+        x: x(index),
+        y: height - 12,
+        "text-anchor": "middle",
+        fill: "#536273",
+        "font-size": 12,
+      }),
+    );
+  });
+  svg.append(
+    svgElement("path", {
+      d: pathFor(solidKey),
+      fill: "none",
+      stroke: "#087f78",
+      "stroke-width": 4,
+    }),
+    svgElement("path", {
+      d: pathFor(dashedKey),
+      fill: "none",
+      stroke: "#718096",
+      "stroke-width": 3,
+      "stroke-dasharray": "7 5",
+    }),
+  );
+}
+
+function renderDeviceSearch() {
+  const items = suggestedDevices();
+  elements.deviceNameList.replaceChildren();
+  items.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.name;
+    elements.deviceNameList.append(option);
+  });
+
+  const linked = items.filter((item) => item.productGroup === state.profile.productGroup);
+  const rest = items.filter((item) => item.productGroup !== state.profile.productGroup);
+  const chips = [...linked, ...rest].slice(0, 4);
+  elements.suggestChips.innerHTML = chips
+    .map(
+      (item) => `
+      <button type="button" class="chip" data-name="${item.name}" role="listitem">
+        ${item.name}
+        <span class="chip-meta">${item.suggestTags.slice(0, 2).join(" · ")}${
+          item.productGroup === state.profile.productGroup ? " · 선택 품목군" : ""
+        }</span>
+      </button>`,
+    )
+    .join("");
+
+  elements.suggestChips.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      elements.deviceSearchInput.value = chip.dataset.name;
+      state.selectedDeviceName = chip.dataset.name;
+      elements.applyDeviceSearch.disabled = false;
+    });
+  });
+
+  const current = elements.deviceSearchInput.value.trim();
+  const match = findDevice(current);
+  state.selectedDeviceName = match ? match.name : null;
+  elements.applyDeviceSearch.disabled = !match;
+}
+
+function renderDeviceReport(item) {
+  const stats = item.stats;
+  const flags = item.flagPrevalence;
+  elements.deviceReport.hidden = false;
+  elements.deviceReportTitle.textContent = item.name;
+  elements.deviceReportSubtitle.textContent =
+    `품목명 통계 · 소속 품목군 ${item.productGroup} · 기업군 관심 품목군 ${state.profile.productGroup}`;
+  elements.deviceMacroSentence.textContent =
+    `${item.name}의 최근 공급 활동은 ${growthBand(stats.growthPct)}이며, 공급자 집중도는 ${stats.concentrationBand}입니다.`;
+  elements.deviceMacroStrip.innerHTML = `
+    <article class="metric"><p class="metric-label">활동 증감</p><p class="metric-value">${growthBand(stats.growthPct)}</p></article>
+    <article class="metric"><p class="metric-label">공급자 집중도</p><p class="metric-value">${stats.concentrationBand}</p></article>
+    <article class="metric"><p class="metric-label">공급자 규모</p><p class="metric-value">${stats.supplierCountBand}</p></article>
+    <article class="metric"><p class="metric-label">품목군 내 비중</p><p class="metric-value">${shareBand(stats.shareOfGroupPct)}</p></article>`;
+
+  const mix = stats.receiverMix;
+  elements.deviceStatMetrics.innerHTML = `
+    <article class="metric"><p class="metric-label">공급 수량 방향</p><p class="metric-value">${stats.quantityDirection}</p></article>
+    <article class="metric"><p class="metric-label">수령 유형 · 의료기관</p><p class="metric-value">${shareBand(mix.의료기관)}</p></article>
+    <article class="metric"><p class="metric-label">수령 유형 · 판매(임대)</p><p class="metric-value">${shareBand(mix["판매(임대)"])}</p></article>
+    <article class="metric"><p class="metric-label">수령 유형 · 기타</p><p class="metric-value">${shareBand(mix.기타)}</p></article>`;
+
+  elements.deviceFlagStrip.innerHTML = `
+    <p class="flag-title">집계 비중 요약 (허가·UDI·모델 색인 화면이 아닙니다)</p>
+    <ul class="flag-list">
+      <li>등급 구성 비중: ${flags.classMode}</li>
+      <li>추적관리 관련 비중: ${flags.traceableShare}</li>
+      <li>이식형 관련 비중: ${flags.implantableShare}</li>
+      <li>일회용 관련 비중: ${flags.singleUseShare}</li>
+      <li>요양급여 관련 비중: ${flags.reimbursementShare}</li>
+    </ul>`;
+
+  renderDeviceTrendChart(stats.activitySeries);
+  renderDiagnosis(elements.deviceDiagnosisBody, buildDeviceDiagnosis(item));
+}
+
+function clearDeviceReport() {
+  state.selectedDeviceName = null;
+  if (elements.deviceSearchInput) elements.deviceSearchInput.value = "";
+  if (elements.deviceReport) elements.deviceReport.hidden = true;
+  if (elements.applyDeviceSearch) elements.applyDeviceSearch.disabled = true;
+  if (elements.deviceDiagnosisBody) elements.deviceDiagnosisBody.replaceChildren();
+}
+
+function openDeviceTab() {
+  const tab = document.getElementById("tab-device");
+  if (!tab || tab.disabled) return;
+  clearDeviceReport();
+  renderDeviceSearch();
+  activateTab(tab);
+  document.getElementById("panel-device")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyDeviceSearch() {
+  const item = findDevice(elements.deviceSearchInput.value.trim());
+  if (!item) {
+    elements.applyDeviceSearch.disabled = true;
+    return;
+  }
+  state.selectedDeviceName = item.name;
+  renderDeviceReport(item);
+  elements.deviceReport.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function backToFirmOverview() {
+  const tab = document.getElementById("tab-overview");
+  if (tab) activateTab(tab);
+  elements.conclusionCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function syncDeviceTabAvailability() {
+  const tab = document.getElementById("tab-device");
+  if (!tab) return;
+  const blocked = isSuppressedProfile();
+  tab.disabled = blocked;
+  tab.classList.toggle("is-disabled", blocked);
+  if (blocked && tab.getAttribute("aria-selected") === "true") {
+    activateTab(document.getElementById("tab-overview"));
+  }
+}
+
 function renderPrivacy() {
   elements.privacyMessage.textContent = state.data.privacy.message;
   elements.hiddenFieldList.innerHTML = state.data.privacy.hiddenFields
@@ -680,7 +932,9 @@ function renderAll() {
   renderConclusion();
   updateProfileSteps();
   elements.resultPanel.hidden = isSuppressedProfile();
+  syncDeviceTabAvailability();
   if (isSuppressedProfile()) {
+    clearDeviceReport();
     updateFlowSteps();
     return;
   }
@@ -690,10 +944,12 @@ function renderAll() {
   renderOpportunityTable();
   renderSimilarGroups();
   renderQuestions();
+  renderDeviceSearch();
   updateFlowSteps();
 }
 
 function activateTab(tab) {
+  if (!tab || tab.disabled) return;
   elements.tabs.forEach((candidate) => {
     const selected = candidate === tab;
     candidate.setAttribute("aria-selected", String(selected));
@@ -702,6 +958,9 @@ function activateTab(tab) {
   elements.panels.forEach((panel) => {
     panel.hidden = panel.id !== tab.getAttribute("aria-controls");
   });
+  if (tab.id === "tab-device") {
+    renderDeviceSearch();
+  }
   updateFlowSteps();
 }
 
@@ -711,13 +970,16 @@ function bindTabs() {
     tab.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      let nextIndex = index;
-      if (event.key === "ArrowLeft") nextIndex = (index - 1 + elements.tabs.length) % elements.tabs.length;
-      if (event.key === "ArrowRight") nextIndex = (index + 1) % elements.tabs.length;
+      const enabled = elements.tabs.filter((candidate) => !candidate.disabled);
+      if (!enabled.length) return;
+      let nextIndex = enabled.indexOf(tab);
+      if (nextIndex < 0) nextIndex = 0;
+      if (event.key === "ArrowLeft") nextIndex = (nextIndex - 1 + enabled.length) % enabled.length;
+      if (event.key === "ArrowRight") nextIndex = (nextIndex + 1) % enabled.length;
       if (event.key === "Home") nextIndex = 0;
-      if (event.key === "End") nextIndex = elements.tabs.length - 1;
-      activateTab(elements.tabs[nextIndex]);
-      elements.tabs[nextIndex].focus();
+      if (event.key === "End") nextIndex = enabled.length - 1;
+      activateTab(enabled[nextIndex]);
+      enabled[nextIndex].focus();
     });
   });
 }
@@ -745,17 +1007,36 @@ async function init() {
   elements.applyProfile.addEventListener("click", () => {
     readProfile();
     state.profileApplied = true;
+    state.selectedDeviceName = null;
+    clearDeviceReport();
     renderAll();
+    activateTab(document.getElementById("tab-overview"));
     elements.conclusionCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  elements.openDeviceTab?.addEventListener("click", openDeviceTab);
+  elements.applyDeviceSearch?.addEventListener("click", applyDeviceSearch);
+  elements.backToFirmFromDevice?.addEventListener("click", backToFirmOverview);
+  elements.backToFirmFromDeviceReport?.addEventListener("click", backToFirmOverview);
+  elements.searchAnotherDevice?.addEventListener("click", () => {
+    clearDeviceReport();
+    renderDeviceSearch();
+    elements.deviceSearchInput?.focus();
+  });
+  elements.deviceSearchInput?.addEventListener("input", () => {
+    const match = findDevice(elements.deviceSearchInput.value.trim());
+    state.selectedDeviceName = match ? match.name : null;
+    elements.applyDeviceSearch.disabled = !match;
   });
   [elements.businessType, elements.region, elements.productGroup].forEach((field) => {
     field.addEventListener("focus", () => {
       state.profileApplied = false;
       updateProfileSteps();
+      syncDeviceTabAvailability();
     });
     field.addEventListener("change", () => {
       state.profileApplied = false;
       updateProfileSteps();
+      syncDeviceTabAvailability();
     });
   });
   window.addEventListener("scroll", updateFlowSteps, { passive: true });

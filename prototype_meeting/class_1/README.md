@@ -4,6 +4,7 @@
 
 - **기존안:** [`index.html`](./index.html) — scrollable control prototype
 - **혁신 시안:** [`../innovation/class1.html`](../innovation/class1.html) — bold case briefing lab
+- **이용·지표 안내 (한국어):** [`../meeting/class1_user_guide.md`](../meeting/class1_user_guide.md)
 
 ## Control demo flow (3–5 minutes)
 

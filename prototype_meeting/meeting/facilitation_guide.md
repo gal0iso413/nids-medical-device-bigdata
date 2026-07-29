@@ -36,6 +36,9 @@ attempt measures whether the UI explains itself.
 
 ## Class 1 tasks (12–15 minutes)
 
+Index meanings and intended calculations (Korean, for participant questions):
+[`class1_user_guide.md`](./class1_user_guide.md).
+
 ### Task 1: Find and orient
 
 Prompt:
@@ -82,8 +85,12 @@ Observe:
 
 ## Class 3 tasks (12–15 minutes)
 
+Index meanings and intended calculations (Korean, for participant questions):
+[`class3_user_guide.md`](./class3_user_guide.md).
+
 Prefer the **혁신 시안** (`innovation/class3.html`) for the full firm → 품목명 sequel.
 Regions are `수도권` / `비수도권` / `전국`.
+The **기존안** can run Task 4 via the **품목명 통계** tab if the operator prefers the control UI.
 
 **Operator note (before Task 3):** 리포트 생성 후 **품목군 검토 지도**는 기본으로 열려 있습니다.
 진단 아래 「품목군 검토 지도 보기」로 바로 스크롤할 수 있습니다.
@@ -129,7 +136,7 @@ Observe:
 
 Prompt:
 
-> 「관심 의료기기 알아보기」에서 추천 검색어로 품목명을 고르고, 집계 통계가 색인(index)이 아닌 이유를 말씀해 주세요.
+> 「관심 의료기기 알아보기」(혁신) 또는 「품목명 통계」 탭(기존안)에서 추천 검색어로 품목명을 고르고, 집계 통계가 색인(index)이 아닌 이유를 말씀해 주세요.
 
 Observe:
 
