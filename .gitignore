@@ -18,6 +18,8 @@ class_*/research/*
 class_*/notes/*
 !class_*/notes/.gitkeep
 class_*/output/*
+class_*/data/parquet/
+*.parquet
 
 # Progess files
 PROGRESS.md

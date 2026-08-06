@@ -1,80 +1,55 @@
 # Class 1 Anomaly Detection
 
-This module runs the Class 1 supply-chain anomaly workflow with an anchor-month
-rolling window.
+Internal supply-chain review workflow. Production ranking: **GAD-NR**.
+Rule metrics (BC, PDI, HHI, price z, timelag) are auxiliary evidence only.
 
-## Anchor-based Pipeline
-
-For anchor `YYYYMM`, all outputs are aligned to the same rolling window:
-
-- Network (`network_edges`, `network_nodes`)
-- BC / HHI / Price Z-score / timelag
-- PyG graph export
-- PyGOD model scores
-- Step 4 evaluation
-- Streamlit UI view
-
-This avoids mixed-time comparisons (for example, rolling GNN vs all-history
-baseline metrics).
-
-## Output Layout
-
-- Rolling baseline outputs:
-  - `class_1_anomaly_detection/output/rolling/anchor_YYYYMM/`
-- PyG artifacts:
-  - `class_1_anomaly_detection/output/pyg/anchor_YYYYMM/`
-- Model/evaluation outputs:
-  - `class_1_anomaly_detection/output/ml/anchor_YYYYMM/`
-
-Legacy top-level outputs under `class_1_anomaly_detection/output/` are still
-kept for compatibility.
-
-## Phase 1 Execution (single anchor)
-
-Use one anchor first (recommended), then expand later.
+## Pipeline (offline)
 
 ```bash
+# 1) Excel → Parquet (once; UI/train never reopen Excel)
+python -m class_1_anomaly_detection.src.ingest.materialize_parquet
+
+# 2) Rolling firm graph + rule metrics (+ firm-aggregated edges)
 python -m class_1_anomaly_detection.src.eda.run_graph_eda --anchor-month 202605
+
+# 3) Slim PyG export (firm edges by default)
 python -m class_1_anomaly_detection.src.experiments.export_pyg_graph --anchor-month 202605
-python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --anchor-month 202605 --models dominant gadnr
-python -m class_1_anomaly_detection.src.experiments.run_step4_evaluation --anchor-month 202605
+
+# 4) GAD-NR production train/display (optional --compare-others)
+python -m class_1_anomaly_detection.src.experiments.run_gadnr_production --anchor-month 202605
+
+# 5) UI artifact bundle (ego caps, review list, events)
+python -m class_1_anomaly_detection.src.experiments.build_ui_artifacts --anchor-month 202605
+
+# 6) Streamlit (artifacts only)
 streamlit run class_1_anomaly_detection/app.py
 ```
 
-## All-Anchors Batch
+Batch all anchors with `--all-anchors` where supported.
 
-To run the full anchor pipeline across all available anchors, run in this order:
+## ML dependencies (required for `pyg_data.pt` + GAD-NR)
 
-```bash
-python -m class_1_anomaly_detection.src.eda.run_graph_eda --all-anchors
-python -m class_1_anomaly_detection.src.experiments.export_pyg_graph --all-anchors
-python -m class_1_anomaly_detection.src.experiments.run_pygod_compare --all-anchors --models dominant gadnr
-python -m class_1_anomaly_detection.src.experiments.run_step4_evaluation --all-anchors
-```
-
-Batch summaries are written to:
-
-- `class_1_anomaly_detection/output/pyg/export_all_anchors_summary.json`
-- `class_1_anomaly_detection/output/ml/run_compare_all_anchors_summary.json`
-- `class_1_anomaly_detection/output/ml/step4_evaluation_all_anchors_summary.json`
-
-## Optional Baseline-Only Batch
-
-To precompute rolling baseline metrics for all anchors:
+Install into the **same** conda env you run the pipeline in (e.g. `nids`):
 
 ```bash
-python -m class_1_anomaly_detection.src.eda.run_graph_eda --all-anchors
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r class_1_anomaly_detection/requirements-ml.txt
 ```
 
-## Prerequisites and Skip Behavior
+Without `torch` / `torch_geometric`, `export_pyg_graph` only writes `graph_tensors.npz` and GAD-NR training cannot run.
 
-- `export_pyg_graph --all-anchors` requires anchor rolling CSVs from `run_graph_eda`.
-- `run_pygod_compare --all-anchors` requires per-anchor PyG artifacts.
-- `run_step4_evaluation --all-anchors` requires per-anchor combined GNN score files.
-- Anchors missing prerequisites are skipped and listed in each batch summary JSON.
+## Outputs
 
-## Reuse Behavior
+| Path | Role |
+|------|------|
+| `data/parquet/` | Working store (gitignored) |
+| `output/rolling/anchor_YYYYMM/` | Network + rule metrics |
+| `output/pyg/anchor_YYYYMM/` | PyG tensors |
+| `output/ml/anchor_YYYYMM/` | GAD-NR scores |
+| `output/ui/anchor_YYYYMM/` | Streamlit bundle |
+| `exports/` | Next-year batch schema stubs |
 
-`run_pygod_compare --reuse` uses strict fingerprint validation.
-Reuse is allowed only when anchor/model/hyperparameter/input signatures match.
-If not, the run retrains and writes fresh outputs.
+## Spec
+
+See `shared_docs/structured/class_1_anomaly_spec.md`.
+UDI-centric GNN idea (not implemented): `notes/udi_centric_gnn_future.md`.

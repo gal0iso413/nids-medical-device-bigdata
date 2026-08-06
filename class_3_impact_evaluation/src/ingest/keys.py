@@ -38,8 +38,13 @@ COL_ORPHAN: str = "희소의료기기 여부"
 COL_HOSPITAL_CODE: str = "요양기관기호(의료기관)"
 COL_RECEIVER_NAME: str = "공급받은자"
 COL_AMOUNT: str = "공급금액"
+COL_SUPPLY_QTY: str = "공급수량"
 COL_SUPPLIER_NAME: str = "공급자"
 COL_SUPPLIER_REG: str = "사업자등록번호"
+COL_SUPPLIER_TYPE: str = "업종"
+COL_SUPPLY_CLASS: str = "공급구분"
+COL_BASE_MONTH: str = "공급내역기준연월"
+COL_LOCATION_SUPPLIER: str = "공급한자의 소재지 시도코드"
 
 
 def strip_float_suffix(series: pd.Series) -> pd.Series:

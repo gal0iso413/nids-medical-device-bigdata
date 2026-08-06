@@ -1,10 +1,21 @@
 # Optional ML stack for Class 1 GNN experiments (PyGOD / PyTorch Geometric).
-# Install after base requirements:
+#
+# Use the same environment that runs the pipeline (e.g. conda env `nids`).
+#
+# Windows / CPU (recommended for this project PC):
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-#   pip install pyg-lib torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.12.0+cpu.html
+#   pip install torch-geometric pygod scikit-learn
 #   pip install -r class_1_anomaly_detection/requirements-ml.txt
+#
+# Linux / CPU (optional PyG extension wheels; match your torch version):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install torch-geometric pygod scikit-learn
+#   pip install pyg-lib torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.12.0+cpu.html
+#
+# Note: pyg-lib / torch-scatter / torch-sparse often lack Windows wheels.
+# They are NOT required for the default GAD-NR export + fit path on this PC.
+
 torch>=2.1.0
 torch-geometric>=2.5.0
 pygod>=1.1.0
-pyg-lib>=0.4.0
 scikit-learn>=1.3.0

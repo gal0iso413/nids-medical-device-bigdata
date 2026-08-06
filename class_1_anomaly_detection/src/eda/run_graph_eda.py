@@ -31,7 +31,7 @@ _HERE = Path(__file__).resolve()
 _REPO_ROOT = _HERE.parent.parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-from class_1_anomaly_detection.src.ingest.loader import load_top7, REPO_ROOT
+from class_1_anomaly_detection.src.ingest.loader import REPO_ROOT
 from class_1_anomaly_detection.src.ingest.keys import (
     ROLLING_WINDOW_MONTHS,
     COL_BASE_MONTH,
@@ -336,7 +336,12 @@ def _export_anchor_bundle(
             ]
         )
 
+    from class_1_anomaly_detection.src.graph.build_network import aggregate_firm_edges
+
+    firm_edges_df = aggregate_firm_edges(edges_df, include_item_group=False)
+
     _save_csv_to(edges_df, "network_edges", out_dir)
+    _save_csv_to(firm_edges_df, "network_edges_firm", out_dir)
     _save_csv_to(nodes_df, "network_nodes", out_dir)
     _save_csv_to(bc_df, "bc_per_entity", out_dir)
     _save_csv_to(hhi_df, "hhi_per_hospital_group", out_dir)
@@ -384,8 +389,12 @@ def run_graph_eda(
     # -----------------------------------------------------------------------
     # Step 1: Load
     # -----------------------------------------------------------------------
-    print("\n[Step 1] Loading top7 workbooks...")
-    master, supply = load_top7(verbose=True)
+    print("\n[Step 1] Loading top7 via Parquet working store (Excel only if missing)...")
+    from class_1_anomaly_detection.src.ingest.materialize_parquet import (
+        load_top7_prefer_parquet,
+    )
+
+    master, supply = load_top7_prefer_parquet(verbose=True)
     anchor_targets = _resolve_anchor_targets(
         supply,
         anchor_month=anchor_month,

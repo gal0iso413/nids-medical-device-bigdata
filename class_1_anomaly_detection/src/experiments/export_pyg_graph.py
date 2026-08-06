@@ -81,6 +81,20 @@ CONTINUOUS_FEATURES = [
     "backdated_count_log",
 ]
 
+# Slim production feature set (G4-b). Full CONTINUOUS_FEATURES used with --research-features.
+PRODUCTION_CONTINUOUS_FEATURES = [
+    "in_degree",
+    "out_degree",
+    "in_weight_log",
+    "out_weight_log",
+    "in_tx_log",
+    "out_tx_log",
+    "bc_score",
+    "price_flag_rate",
+    "price_median_z",
+    "timelag_median_log",
+]
+
 
 def _load_csv(name: str, *, base_dir: Path = OUTPUT_DIR) -> pd.DataFrame:
     path = base_dir / f"{name}.csv"
@@ -216,6 +230,8 @@ def build_node_features(
     bc: pd.DataFrame,
     price: pd.DataFrame,
     timelag: pd.DataFrame,
+    *,
+    research_features: bool = False,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Join graph topology metrics with Phase 1 entity-level indicators."""
     node_ids = nodes["entity_id"].astype(str).tolist()
@@ -300,9 +316,15 @@ def build_node_features(
         axis=1,
     )
 
-    feature_names = CONTINUOUS_FEATURES + sorted(
+    feature_names = (
+        CONTINUOUS_FEATURES if research_features else PRODUCTION_CONTINUOUS_FEATURES
+    ) + sorted(
         c for c in features.columns if c.startswith("type_") or c.startswith("loc_")
     )
+    # Ensure all requested continuous columns exist
+    for col in feature_names:
+        if col not in features.columns:
+            features[col] = 0.0
     return features, feature_names
 
 
@@ -464,6 +486,8 @@ def export_pyg_graph(
     *,
     anchor_month: str | None = None,
     verbose: bool = True,
+    research_features: bool = False,
+    use_firm_edges: bool = True,
 ) -> Path:
     """Load CSV artifacts, build tensors, save PyG-ready outputs."""
     anchor = normalize_anchor_month(anchor_month) if anchor_month is not None else None
@@ -471,12 +495,18 @@ def export_pyg_graph(
     out_dir = rolling_pyg_dir(anchor) if anchor is not None else PYG_DIR
 
     nodes = _load_csv("network_nodes", base_dir=data_dir)
-    edges = _load_csv("network_edges", base_dir=data_dir)
+    firm_path = data_dir / "network_edges_firm.csv"
+    if use_firm_edges and firm_path.exists():
+        edges = pd.read_csv(firm_path)
+    else:
+        edges = _load_csv("network_edges", base_dir=data_dir)
     bc = _load_csv("bc_per_entity", base_dir=data_dir)
     price = _load_csv("price_zscore_per_entity", base_dir=data_dir)
     timelag = _load_csv("timelag_per_entity", base_dir=data_dir)
 
-    features, feature_names = build_node_features(nodes, edges, bc, price, timelag)
+    features, feature_names = build_node_features(
+        nodes, edges, bc, price, timelag, research_features=research_features
+    )
     entity_ids = features["entity_id"].astype(str).tolist()
     entity_to_idx = {eid: i for i, eid in enumerate(entity_ids)}
 
@@ -547,6 +577,8 @@ def export_pyg_graph(
         "nodes": int(len(features)),
         "edges": int(edge_index.shape[1]),
         "feature_dim": int(x.shape[1]),
+        "research_features": research_features,
+        "use_firm_edges": use_firm_edges and firm_path.exists(),
         "feature_signature": hashlib.sha256(
             json.dumps(feature_names, ensure_ascii=True).encode("utf-8")
         ).hexdigest(),
@@ -734,6 +766,16 @@ def main() -> None:
         action="store_true",
         help="Export PyG artifacts for every export-ready anchor.",
     )
+    parser.add_argument(
+        "--research-features",
+        action="store_true",
+        help="Use full continuous feature set (offline research).",
+    )
+    parser.add_argument(
+        "--product-edges",
+        action="store_true",
+        help="Use product-composite edges instead of firm-aggregated edges.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
     if args.all_anchors and args.anchor_month is not None:
@@ -741,7 +783,12 @@ def main() -> None:
     if args.all_anchors:
         export_pyg_graph_all_anchors(verbose=not args.quiet)
         return
-    export_pyg_graph(anchor_month=args.anchor_month, verbose=not args.quiet)
+    export_pyg_graph(
+        anchor_month=args.anchor_month,
+        verbose=not args.quiet,
+        research_features=args.research_features,
+        use_firm_edges=not args.product_edges,
+    )
 
 
 if __name__ == "__main__":

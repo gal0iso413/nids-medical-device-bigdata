@@ -1,0 +1,6 @@
+{
+  "my_company_mode_enabled": false,
+  "my_company_entity_id": null,
+  "report_scope_device_classes": [1, 2, 3, 4],
+  "disclaimer_ko": "본 화면은 공급내역보고 기반 집계이며 실제 판매량이 아닙니다. 회사명·순위·개인 식별 값은 제공하지 않습니다. 보고 대상이 아닌 품목은 누락될 수 있습니다."
+}

@@ -352,6 +352,50 @@ def _graph_from_tables(
     return G
 
 
+def aggregate_firm_edges(
+    edge_table: pd.DataFrame,
+    *,
+    include_item_group: bool = False,
+    item_group_col: str = "item_group",
+) -> pd.DataFrame:
+    """
+    Density-control pre-aggregation for GNN / overview.
+
+    Collapses product-composite edges to ``(src, dst)`` or
+    ``(src, dst, item_group)`` with summed weight/tx_count.
+    """
+    if edge_table.empty:
+        return edge_table.copy()
+
+    work = edge_table.copy()
+    group_cols = ["src", "dst"]
+    if include_item_group and item_group_col in work.columns:
+        group_cols.append(item_group_col)
+
+    agg = (
+        work.groupby(group_cols, sort=False)
+        .agg(
+            weight=("weight", "sum"),
+            tx_count=("tx_count", "sum"),
+            has_zero_price=("has_zero_price", "any"),
+            has_traceable=("has_traceable", "any"),
+            has_reimbursable=("has_reimbursable", "any"),
+            max_device_class=("max_device_class", "max"),
+            unique_udi_count=("unique_udi_count", "sum"),
+        )
+        .reset_index()
+    )
+    agg["tx_count"] = agg["tx_count"].astype(int)
+    agg["max_device_class"] = agg["max_device_class"].astype(int)
+    agg["unique_udi_count"] = agg["unique_udi_count"].astype(int)
+    agg["product_key"] = (
+        agg[group_cols].astype(str).agg("|".join, axis=1)
+        if include_item_group and item_group_col in agg.columns
+        else agg["src"].astype(str) + "|" + agg["dst"].astype(str)
+    )
+    return agg
+
+
 def collapse_to_digraph(G: nx.MultiDiGraph) -> nx.DiGraph:
     """
     Collapse parallel product edges into entity-level (src, dst) pairs for BC.
