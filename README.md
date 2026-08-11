@@ -11,9 +11,26 @@ Three isolated agents share read-only Excel inputs and the immutable Slack bridg
 | `shared_utils/` | Immutable `AgentSlacker` (agent + `#general-pm-board`) |
 | `class_1_anomaly_detection/` | Agent 1 — distribution & graph anomalies |
 | `class_2_supply_forecast/` | Agent 2 — time-series & early warning |
-| `class_3_impact_evaluation/` | Agent 3 — MCDM & portfolio reporting |
+| `class_3_impact_evaluation/` | Agent 3 — historical MCDM implementation (superseded) |
 | `.cursor/rules/` | Workspace governance (MDC) |
 | `.hermes/skills/` | Hermes background roles (research, profiler, auditor; see `.hermes/README.md`) |
+
+## Current product and architecture decisions
+
+The executable product baseline is under `docs/`:
+
+- `docs/architecture/target-web-architecture.md`
+- `docs/decisions/class1-gadnr-feature-contract.md`
+- `docs/decisions/class3-rebuild-decision.md`
+- `docs/specs/class1-internal-monitoring-web.md`
+- `docs/specs/class3-company-product-comparison.md`
+- `docs/migration/streamlit-to-web-plan.md`
+- `docs/migration/implementation-roadmap.md`
+
+These decisions supersede the older Class 1 multi-model UI and Class 3
+MCDM/impact-evaluation product direction. The older structured specifications
+and meeting prototypes remain evidence and historical context until their
+separate migration/removal PRs.
 
 Per-agent governance lives in `class_*/.cursor/rules/agent-governance.mdc`. Each agent maintains a compact `PROGRESS.md` (≤20 lines).
 
@@ -55,6 +72,7 @@ Copy from `.env.example` files. Webhooks are optional for local work.
 
 ## Phase status
 
-All agents are locked at **Phase 1 (EDA)** until the PM approves advancement in Composer.
-
-Implementation code (Streamlit pipelines, models) is added only after phase approvals.
+The repository contains Phase 1 EDA code, Streamlit prototypes, PyGOD
+experiments, and static meeting prototypes. New implementation is gated by the
+decision documents and small-PR roadmap above; the presence of existing code
+does not mean the target web architecture or public release is approved.
