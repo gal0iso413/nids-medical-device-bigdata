@@ -1,0 +1,27 @@
+:root {
+  --c3-navy: #003675;
+  --c3-blue: #0b5ea8;
+  --c3-teal: #087f78;
+  --c3-teal-soft: #e6f5f4;
+  --c3-amber: #a44800;
+  --c3-amber-soft: #fff4e8;
+  --c3-danger: #a51d2d;
+  --c3-ink: #0f172a;
+  --c3-muted: #475569;
+  --c3-line: #e2e8f0;
+  --c3-line-strong: #cbd5e1;
+  --c3-canvas: #f5f7fa;
+  --c3-surface: #ffffff;
+  --c3-focus: #0b5ea8;
+  --c3-shadow: 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.06);
+  --c3-radius: 12px;
+  --c3-radius-sm: 8px;
+  --c3-content: 1180px;
+  --c3-font: "Pretendard GOV", Pretendard, "Apple SD Gothic Neo",
+    "Malgun Gothic", system-ui, sans-serif;
+  --c3-display: clamp(2.5rem, 4.5vw, 3.5rem);
+  --c3-title: clamp(1.65rem, 2.4vw, 2rem);
+  --c3-body: 1.0625rem;
+  --c3-meta: 0.875rem;
+}
