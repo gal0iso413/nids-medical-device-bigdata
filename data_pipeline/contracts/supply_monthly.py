@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
+from itertools import islice
 import json
 import re
 from typing import Any, Final
@@ -149,15 +150,7 @@ class ContractValidationError(ValueError):
     """Raised when source rows or a monthly fact violate the contract."""
 
 
-def _bounded_diagnostic(values: Any) -> str:
-    """Return a bounded count/sample summary without materializing all values."""
-    total = len(values)
-    sample_values = values[:_DIAGNOSTIC_SAMPLE_LIMIT]
-    if isinstance(sample_values, (pd.Index, pd.Series)):
-        sample_values = sample_values.tolist()
-    else:
-        sample_values = list(sample_values)
-
+def _format_bounded_diagnostic(total: int, sample_values: Any) -> str:
     sample: list[str] = []
     for value in sample_values:
         text = str(value)
@@ -166,6 +159,52 @@ def _bounded_diagnostic(values: Any) -> str:
         sample.append(text)
     omitted = max(total - len(sample), 0)
     return f"total={total}; sample={sample}; omitted={omitted}"
+
+
+def _bounded_diagnostic(values: Any) -> str:
+    """Summarize an already-small collection such as column or type names."""
+    return _format_bounded_diagnostic(
+        len(values),
+        islice(iter(values), _DIAGNOSTIC_SAMPLE_LIMIT),
+    )
+
+
+def _bounded_mask_diagnostic(
+    invalid_mask: pd.Series | np.ndarray,
+    *,
+    index: pd.Index | None = None,
+    sample_frame: pd.DataFrame | None = None,
+    sample_column: str | None = None,
+) -> str:
+    """Summarize invalid positions without materializing their full index."""
+    if isinstance(invalid_mask, pd.Series):
+        mask_values = invalid_mask.array
+        total = int(invalid_mask.sum(skipna=True))
+        diagnostic_index = invalid_mask.index if index is None else index
+    else:
+        mask_values = invalid_mask
+        total = int(invalid_mask.sum())
+        diagnostic_index = pd.RangeIndex(len(mask_values)) if index is None else index
+
+    positions = islice(
+        (
+            position
+            for position, is_invalid in enumerate(mask_values)
+            if not pd.isna(is_invalid) and bool(is_invalid)
+        ),
+        _DIAGNOSTIC_SAMPLE_LIMIT,
+    )
+    if sample_frame is None:
+        samples = (diagnostic_index[position] for position in positions)
+    else:
+        if sample_column is None:
+            raise ValueError("sample_column is required with sample_frame")
+        column_position = sample_frame.columns.get_loc(sample_column)
+        samples = (
+            sample_frame.iat[position, column_position]
+            for position in positions
+        )
+    return _format_bounded_diagnostic(total, samples)
 
 
 def _is_missing(value: Any) -> bool:
@@ -189,7 +228,7 @@ def _normalize_required_text_series(
         prefix = f"{blocked_status}: " if blocked_status else ""
         raise ContractValidationError(
             f"{prefix}{column!r} is missing or blank at source rows: "
-            f"{_bounded_diagnostic(series.index[invalid])}"
+            f"{_bounded_mask_diagnostic(invalid, index=series.index)}"
         )
     return normalized
 
@@ -201,17 +240,18 @@ def _normalize_optional_text_series(series: pd.Series) -> pd.Series:
 
 def _normalize_integer_code_series(series: pd.Series, *, column: str) -> pd.Series:
     """Normalize an official integer code without accepting fractional values."""
-    actual_float = series.map(lambda value: isinstance(value, (float, np.floating)))
-    float_values = series.loc[actual_float & series.notna()]
-    if not float_values.empty:
-        numeric_float = float_values.astype("float64")
-        invalid_float = ~np.isfinite(numeric_float) | numeric_float.abs().gt(2**53)
-        if invalid_float.any():
-            raise ContractValidationError(
-                f"{BLOCK_PRODUCT_KEY_INVALID}: {column!r} contains non-finite "
-                "or precision-unsafe float values at source rows: "
-                f"{_bounded_diagnostic(float_values.index[invalid_float])}"
-            )
+    def _is_unsafe_float(value: Any) -> bool:
+        if not isinstance(value, (float, np.floating)) or pd.isna(value):
+            return False
+        return not np.isfinite(value) or abs(value) > 2**53
+
+    invalid_float = series.map(_is_unsafe_float)
+    if invalid_float.any():
+        raise ContractValidationError(
+            f"{BLOCK_PRODUCT_KEY_INVALID}: {column!r} contains non-finite "
+            "or precision-unsafe float values at source rows: "
+            f"{_bounded_mask_diagnostic(invalid_float, index=series.index)}"
+        )
 
     text = series.astype("string").str.strip()
     missing = text.isna() | text.eq("")
@@ -222,7 +262,7 @@ def _normalize_integer_code_series(series: pd.Series, *, column: str) -> pd.Seri
         raise ContractValidationError(
             f"{BLOCK_PRODUCT_KEY_INVALID}: {column!r} is null, blank, or not "
             "an integer code at source rows: "
-            f"{_bounded_diagnostic(series.index[invalid])}"
+            f"{_bounded_mask_diagnostic(invalid, index=series.index)}"
         )
 
     canonical = unsigned.str.replace(r"\.0+$", "", regex=True).str.lstrip("0")
@@ -239,7 +279,7 @@ def _normalize_decimal_series(series: pd.Series, *, column: str) -> pd.Series:
     if invalid.any():
         raise ContractValidationError(
             f"{column!r} contains non-decimal or non-finite values at source rows: "
-            f"{_bounded_diagnostic(series.index[invalid])}"
+            f"{_bounded_mask_diagnostic(invalid, index=series.index)}"
         )
 
     distinct_tokens = pd.unique(text[~missing])
@@ -248,16 +288,16 @@ def _normalize_decimal_series(series: pd.Series, *, column: str) -> pd.Series:
         try:
             decimal_value = Decimal(str(token))
         except (InvalidOperation, ValueError) as exc:
-            token_rows = series.index[text.eq(str(token))]
+            token_rows = text.eq(str(token))
             raise ContractValidationError(
                 f"{column!r} contains an invalid decimal token at source rows: "
-                f"{_bounded_diagnostic(token_rows)}"
+                f"{_bounded_mask_diagnostic(token_rows, index=series.index)}"
             ) from exc
         if not decimal_value.is_finite():
-            token_rows = series.index[text.eq(str(token))]
+            token_rows = text.eq(str(token))
             raise ContractValidationError(
                 f"{column!r} contains a non-finite decimal token at source rows: "
-                f"{_bounded_diagnostic(token_rows)}"
+                f"{_bounded_mask_diagnostic(token_rows, index=series.index)}"
             )
         token_to_decimal[str(token)] = decimal_value
 
@@ -327,15 +367,18 @@ def _deduplicate_source_rows(rows: pd.DataFrame) -> pd.DataFrame:
         list(_IDEMPOTENCY_COLUMNS), keep=False
     )
     if conflict_mask.any():
-        conflicts = (
-            distinct_variants.loc[conflict_mask, list(_IDEMPOTENCY_COLUMNS)]
-            .drop_duplicates()
-            .sort_values(list(_IDEMPOTENCY_COLUMNS), kind="stable")
+        first_conflict_per_key = conflict_mask & ~distinct_variants.duplicated(
+            list(_IDEMPOTENCY_COLUMNS), keep="first"
+        )
+        conflict_diagnostic = _bounded_mask_diagnostic(
+            first_conflict_per_key,
+            sample_frame=distinct_variants,
+            sample_column="source_row_id",
         )
         raise ContractValidationError(
             "blocked:source_row_conflict: identical idempotency keys contain "
             "different normalized content; conflicting source_row_id values: "
-            f"{_bounded_diagnostic(conflicts['source_row_id'])}"
+            f"{conflict_diagnostic}"
         )
     return rows.drop_duplicates(list(_IDEMPOTENCY_COLUMNS), keep="first").copy()
 
@@ -377,11 +420,11 @@ def normalize_source_rows(rows: pd.DataFrame) -> pd.DataFrame:
         )
 
     parsed_dates = pd.to_datetime(normalized["supply_date"], errors="coerce")
-    invalid_dates = normalized.index[parsed_dates.isna()]
-    if len(invalid_dates):
+    invalid_dates = parsed_dates.isna()
+    if invalid_dates.any():
         raise ContractValidationError(
             "Invalid or missing supply_date at source rows: "
-            f"{_bounded_diagnostic(invalid_dates)}"
+            f"{_bounded_mask_diagnostic(invalid_dates, index=normalized.index)}"
         )
     normalized["supply_date"] = parsed_dates.dt.normalize()
 
@@ -411,11 +454,10 @@ def _require_decimal_or_null(series: pd.Series, column: str) -> None:
     invalid_mask = series.map(
         lambda value: not _is_missing(value) and not isinstance(value, Decimal)
     )
-    invalid = series.index[invalid_mask]
-    if len(invalid):
+    if invalid_mask.any():
         raise ContractValidationError(
             f"{column!r} must contain Decimal or null; invalid rows: "
-            f"{_bounded_diagnostic(invalid)}"
+            f"{_bounded_mask_diagnostic(invalid_mask, index=series.index)}"
         )
 
 
@@ -455,59 +497,60 @@ def validate_monthly_fact(fact: pd.DataFrame) -> pd.DataFrame:
         ~month_text.str.match(_MONTH_PATTERN, na=False)
         | pd.to_datetime(month_text, format="%Y%m", errors="coerce").isna()
     )
-    invalid_months = fact.index[invalid_month_mask]
-    if len(invalid_months):
+    if invalid_month_mask.any():
         raise ContractValidationError(
-            f"Invalid YYYYMM values at rows: {_bounded_diagnostic(invalid_months)}"
+            "Invalid YYYYMM values at rows: "
+            f"{_bounded_mask_diagnostic(invalid_month_mask, index=fact.index)}"
         )
 
     grain = ["month", "src_company_id", "dst_company_id", "product_id"]
-    duplicate_rows = fact.index[fact.duplicated(grain, keep=False)]
-    if len(duplicate_rows):
+    duplicate_rows = fact.duplicated(grain, keep=False)
+    if duplicate_rows.any():
         raise ContractValidationError(
             "Duplicate monthly fact grain at rows: "
-            f"{_bounded_diagnostic(duplicate_rows)}"
+            f"{_bounded_mask_diagnostic(duplicate_rows, index=fact.index)}"
         )
 
     for column in ("src_company_id", "dst_company_id", "product_id", "source_version"):
-        missing_rows = fact.index[
+        missing_rows = (
             fact[column].isna() | fact[column].str.strip().eq("")
-        ]
-        if len(missing_rows):
+        )
+        if missing_rows.any():
             raise ContractValidationError(
                 f"{column!r} is required at rows: "
-                f"{_bounded_diagnostic(missing_rows)}"
+                f"{_bounded_mask_diagnostic(missing_rows, index=fact.index)}"
             )
-    invalid_products = fact.index[
+    invalid_products = (
         ~fact["product_id"].str.match(r"^p3:[0-9a-f]{64}$", na=False)
-    ]
-    if len(invalid_products):
+    )
+    if invalid_products.any():
         raise ContractValidationError(
-            f"Invalid product_id at rows: {_bounded_diagnostic(invalid_products)}"
+            "Invalid product_id at rows: "
+            f"{_bounded_mask_diagnostic(invalid_products, index=fact.index)}"
         )
 
     for column in _COUNT_COLUMNS:
         numeric = pd.to_numeric(fact[column], errors="coerce")
-        invalid = fact.index[
+        invalid = (
             numeric.isna() | (numeric < 0) | (numeric % 1 != 0)
-        ]
-        if len(invalid):
+        )
+        if invalid.any():
             raise ContractValidationError(
                 f"Invalid non-negative integer {column!r} at rows: "
-                f"{_bounded_diagnostic(invalid)}"
+                f"{_bounded_mask_diagnostic(invalid, index=fact.index)}"
             )
-    nonpositive_tx = fact.index[fact["tx_count"].le(0)]
-    if len(nonpositive_tx):
+    nonpositive_tx = fact["tx_count"].le(0)
+    if nonpositive_tx.any():
         raise ContractValidationError(
             "tx_count must be positive at rows: "
-            f"{_bounded_diagnostic(nonpositive_tx)}"
+            f"{_bounded_mask_diagnostic(nonpositive_tx, index=fact.index)}"
         )
     for column in _COUNT_COLUMNS[1:]:
-        excessive = fact.index[fact[column].gt(fact["tx_count"])]
-        if len(excessive):
+        excessive = fact[column].gt(fact["tx_count"])
+        if excessive.any():
             raise ContractValidationError(
                 f"{column} cannot exceed tx_count at rows: "
-                f"{_bounded_diagnostic(excessive)}"
+                f"{_bounded_mask_diagnostic(excessive, index=fact.index)}"
             )
 
     count_for_sum = {
@@ -518,42 +561,38 @@ def validate_monthly_fact(fact: pd.DataFrame) -> pd.DataFrame:
     for column in _DECIMAL_FACT_COLUMNS:
         _require_decimal_or_null(fact[column], column)
         valid_count = fact[count_for_sum[column]]
-        invalid_null = fact.index[
+        invalid_null = (
             (valid_count.eq(0) & fact[column].notna())
             | (valid_count.gt(0) & fact[column].isna())
-        ]
-        if len(invalid_null):
+        )
+        if invalid_null.any():
             raise ContractValidationError(
                 f"{column!r} nullability disagrees with its valid-row count at rows: "
-                f"{_bounded_diagnostic(invalid_null)}"
+                f"{_bounded_mask_diagnostic(invalid_null, index=fact.index)}"
             )
-        negative = fact.index[
-            fact[column].map(
-                lambda value: False if _is_missing(value) else value < Decimal("0")
-            )
-        ]
-        if len(negative):
+        negative = fact[column].map(
+            lambda value: False if _is_missing(value) else value < Decimal("0")
+        )
+        if negative.any():
             raise ContractValidationError(
                 f"{column!r} cannot contain negative forward totals at rows: "
-                f"{_bounded_diagnostic(negative)}"
+                f"{_bounded_mask_diagnostic(negative, index=fact.index)}"
             )
 
-    missing_quality_flags = fact.index[fact["quality_flags"].isna()]
-    if len(missing_quality_flags):
+    missing_quality_flags = fact["quality_flags"].isna()
+    if missing_quality_flags.any():
         raise ContractValidationError(
             "quality_flags must be an empty or semicolon-delimited string at rows: "
-            f"{_bounded_diagnostic(missing_quality_flags)}"
+            f"{_bounded_mask_diagnostic(missing_quality_flags, index=fact.index)}"
         )
     def _quality_flags_are_ordered(value: Any) -> bool:
         flags = [flag for flag in str(value).split(";") if flag]
         return flags == sorted(set(flags))
 
-    unordered_flags = fact.index[
-        ~fact["quality_flags"].map(_quality_flags_are_ordered)
-    ]
-    if len(unordered_flags):
+    unordered_flags = ~fact["quality_flags"].map(_quality_flags_are_ordered)
+    if unordered_flags.any():
         raise ContractValidationError(
             "quality_flags must be unique and sorted at rows: "
-            f"{_bounded_diagnostic(unordered_flags)}"
+            f"{_bounded_mask_diagnostic(unordered_flags, index=fact.index)}"
         )
     return fact.copy(deep=True)

@@ -261,6 +261,32 @@ class SupplyMonthlyContractTests(unittest.TestCase):
         self.assertIn("omitted=2480", message_2500)
         self.assertLess(abs(len(message_2500) - len(message_25)), 20)
 
+    def test_hundred_thousand_negative_rows_sample_only_twenty_source_ids(self) -> None:
+        row_count = 100_000
+        source = self.one_row().iloc[
+            np.zeros(row_count, dtype=np.int64)
+        ].reset_index(drop=True)
+        source["source_row_id"] = (
+            "negative-"
+            + pd.Series(np.arange(row_count), dtype="int64").astype("string").str.zfill(6)
+        )
+        source["amount_clean"] = "-1"
+
+        with self.assertRaisesRegex(
+            ContractValidationError, "blocked:negative_forward_value"
+        ) as context:
+            aggregate_company_counterparty_product_month(source)
+
+        message = str(context.exception)
+        self.assertIn("total=100000", message)
+        self.assertIn("omitted=99980", message)
+        sample_match = re.search(r"sample=\[(.*?)\]; omitted=99980", message)
+        self.assertIsNotNone(sample_match)
+        samples = sample_match.group(1).split(", ")
+        self.assertEqual(len(samples), 20)
+        self.assertIn("negative-000019", samples[-1])
+        self.assertNotIn("negative-000020", sample_match.group(1))
+
     def test_aggregate_preserves_grain_units_and_separate_valid_counts(self) -> None:
         original = self.source.copy(deep=True)
         fact = aggregate_company_counterparty_product_month(self.source)

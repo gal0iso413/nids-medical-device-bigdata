@@ -14,6 +14,7 @@ from data_pipeline.contracts.supply_monthly import (
     MONTHLY_FACT_COLUMNS,
     ContractValidationError,
     _bounded_diagnostic,
+    _bounded_mask_diagnostic,
     assign_product_ids,
     empty_monthly_fact,
     normalize_source_rows,
@@ -50,17 +51,19 @@ def _raise_for_transaction_types(transaction_types: pd.Series) -> None:
 
 def _raise_for_negative_forward_values(rows: pd.DataFrame) -> None:
     for column in ("amount_clean", "raw_supply_qty", "piece_qty"):
-        valid = rows[column].dropna()
-        negative = valid.lt(Decimal("0"))
+        negative = rows[column].map(
+            lambda value: False if pd.isna(value) else value < Decimal("0")
+        )
         if negative.any():
-            source_ids = (
-                rows.loc[negative.index[negative], "source_row_id"]
-                .astype("string")
-                .sort_values(kind="stable")
+            negative_diagnostic = _bounded_mask_diagnostic(
+                negative,
+                sample_frame=rows,
+                sample_column="source_row_id",
             )
             raise ContractValidationError(
                 f"{BLOCK_NEGATIVE_FORWARD_VALUE}: {column!r} is negative for "
-                f"source_row_id values: {_bounded_diagnostic(source_ids)}"
+                "source_row_id values: "
+                f"{negative_diagnostic}"
             )
 
 
@@ -108,7 +111,7 @@ def aggregate_company_counterparty_product_month(rows: pd.DataFrame) -> pd.DataF
     if len(source_versions) != 1:
         raise ContractValidationError(
             "One aggregation call must contain exactly one source_version; "
-            f"found: {_bounded_diagnostic(source_versions)}"
+            f"found {len(source_versions)} versions"
         )
     source_version = source_versions[0]
 
