@@ -23,7 +23,7 @@
 
 ## 마이그레이션 원칙
 
-1. 데이터 계약을 UI보다 먼저 고정한다.
+1. 공통 월 사실 계약을 먼저 고정한 뒤 Class 3 mock API 계약과 정적 웹을 검증한다. mock-first는 목표 런타임 데이터 흐름을 바꾸지 않는다.
 2. 원천 적재, 서비스 집계, 모델 산출, API, UI를 별도 PR로 나눈다.
 3. Class 1 모델 변경과 Class 1 UI 변경을 같은 PR에 넣지 않는다.
 4. Class 3 기존 코드 삭제와 신규 서비스 구축을 같은 PR에 넣지 않는다.
@@ -65,18 +65,50 @@
 
 입력: 정제된 DataFrame fixture. 첫 PR에서는 생산 Excel을 실행하지 않는다.
 
-출력: `fact_company_counterparty_product_month` 스키마와 결정적 집계 함수.
+출력: 정규화된 3-key 제품 ID, 원천 행 멱등 키, 수량별 유효 행 수와 차단 상태를 포함한 `fact_company_counterparty_product_month` 스키마와 결정적 집계 함수.
 
 테스트:
 
 - 금액·건수·원본 수량·낱개 수량 분리
-- 3-key 제품 ID, 월, 업체쌍 중복 처리
+- 3-key 공백·공식 dtype 정규화와 incomplete-key 차단
+- `(source_version, source_row_id)` 중복 제거와 원천 ID 부재 차단
+- `raw_supply_qty_valid_row_count`와 `piece_qty_valid_row_count` 분리
+- 일반 공급 음수값과 반품·회수 차단
 - 결측·부호·금액 대체 quality flag
 - 품목군과 품목명 분리
 
 완료 조건: 동일 fixture에서 행 순서와 무관하게 동일 집계가 생성된다.
 
-### M2. 오프라인 월별 Parquet 적재
+### M2. Class 3 mock API 계약과 정적 웹 셸
+
+대상(제안):
+
+- `web/class3_public/`
+- `web/class3_public/fixtures/`
+- `schemas/mock/class3-public.*`
+- 정적 fixture 계약 테스트
+
+입력: M1의 필드명·nullable·품질 상태를 축약한 버전된 mock 응답. 실데이터를 읽지 않는다.
+
+출력: 정적 웹 진입점, mock adapter, 품목별 결과·포트폴리오·빈 상태를 분리한 화면 셸.
+
+테스트: schema snapshot, fixture loader, loading/error/empty/suppressed/missing 상태.
+
+완료 조건: 실데이터·인증·공개 정책 임계값·기존 MCDM 격리 없이 화면 계약을 검토할 수 있고 production mock fallback이 없다.
+
+### M3. Class 3 시각 체계·핵심 상호작용·디자인 조정
+
+대상: M2 정적 웹 셸.
+
+입력: 혁신 시안의 색상·타이포그래피·큰 검색 영역·카드/비교표 위계·접근성 패턴. 기존 정보 구조와 생성 문장은 입력이 아니다.
+
+출력: 다중 품목 검색, 기간 선택, 비교표, 월별 추세, 포트폴리오, 상태별 정적 화면.
+
+테스트: mock E2E, 키보드 탐색, responsive, 시각 회귀.
+
+완료 조건: Cursor를 이용한 사용자 화면 검토와 디자인 조정 기록이 남고 제품·API·데이터 계약은 변경하지 않는다.
+
+### M4. 오프라인 월별 Parquet 적재
 
 대상(제안):
 
@@ -101,7 +133,7 @@
 
 **Decision required** — Parquet writer 라이브러리, 파일 저장 위치/암호화/보존 정책.
 
-### M3. Class 3 신규 집계·공개 보호
+### M5. Class 3 검색 dimension·실데이터 집계·공개 보호
 
 Class 1과 독립 작업이다.
 
@@ -120,24 +152,50 @@ Class 1과 독립 작업이다.
 
 완료 조건: 공개 allowlist fixture에 직접 식별자와 원시 경로가 없다.
 
-### M4. Class 3 API와 웹
+### M6. Class 3 실제 공개 API
 
 대상(제안):
 
 - `services/class3_public_api/`
+- `schemas/openapi/class3-public.yaml`
+
+입력: M5의 공개 보호된 데이터 제품.
+
+출력: catalog/comparisons/methodology API, 품목별 비교, 포트폴리오, 관측된 도달 구조, 억제·결측 응답.
+
+테스트: OpenAPI snapshot, allowlist, rate limit, 캐시 격리, suppression 응답.
+
+완료 조건: 승인된 실데이터 fixture가 공개 보호 엔진을 거쳐 OpenAPI 계약으로 반환된다.
+
+### M7. Class 3 확정 웹 화면과 실제 API 연결
+
+대상: M3에서 확정한 `web/class3_public/` 화면과 M6 공개 API.
+
+입력: 검색 dimension, 실제 공개 API, 억제·결측 상태.
+
+출력: mock adapter를 제거한 검색·비교·추세·포트폴리오·도달 구조 사용자 여정.
+
+테스트: API E2E, 접근성, responsive, loading/error/empty/suppressed/missing 상태, mock fallback 부재.
+
+완료 조건: 화면 의미와 정보 구조를 다시 설계하지 않고 M3 승인 화면에 실데이터를 연결한다.
+
+### M8. Class 3 인증 기업 경계
+
+대상(제안):
+
 - `services/class3_enterprise_api/`
-- `web/class3_public/`
-- `schemas/openapi/class3-*.yaml`
+- `schemas/openapi/class3-enterprise.yaml`
+- 인증 기업 화면 경계
 
-입력: M3 공개/기업 데이터 제품.
+입력: 기업 인증·자사 소유권 검증, M5 보호 정책, M7 확정 웹.
 
-출력: 검색, 품목별 비교, 포트폴리오, 관측된 도달 구조, 억제·결측 안내.
+출력: 자사 포트폴리오와 익명 동종집단 비교, 감사·캐시·tenant 격리.
 
-테스트: OpenAPI snapshot, 공개/기업 권한 분리, 접근성, 캐시 격리, suppression UI.
+테스트: cross-tenant 접근, 자사 검증, suppression, 공개/기업 권한 분리.
 
-완료 조건: 정적 mock 없이 승인 fixture로 end-to-end 사용자 여정을 수행한다.
+완료 조건: 공개 사용자에게 기업 전용 필드나 쿼리 경로가 노출되지 않는다.
 
-### M5. Class 3 기존 서비스 active route 퇴역
+### M9. Class 3 기존 서비스 active route 퇴역
 
 대상 참조:
 
@@ -146,7 +204,7 @@ Class 1과 독립 작업이다.
 - `prototype_meeting/innovation/class3.*`
 - 배포·README·CI의 기존 진입점
 
-입력: M4 parity·보안 승인, 보존 사실 목록.
+입력: M7 공개 웹, 필요한 경우 M8 기업 경계의 parity·보안 승인, 보존 사실 목록.
 
 출력: 배포·라우팅·CI의 active runtime에서 MCDM 서비스 격리. 기존 소스 파일 삭제는 포함하지 않는다.
 
@@ -158,7 +216,7 @@ Class 1과 독립 작업이다.
 
 완료 조건: 신규 서비스와 공용 데이터 사실을 유지한 채 active route가 분리된다. 소스 삭제는 보존 사실 이전과 별도 승인을 거친 후속 PR에서만 수행한다.
 
-### M6. Class 1 모델 계약 변경
+### M10. Class 1 모델 계약 변경
 
 Class 3와 독립 작업이다.
 
@@ -178,7 +236,7 @@ Class 3와 독립 작업이다.
 
 완료 조건: GAD-NR가 유일한 서비스 주 모델이고 기존 점수와 버전이 분리된다.
 
-### M7. Class 1 API와 웹
+### M11. Class 1 API와 웹
 
 대상(제안):
 
@@ -186,7 +244,7 @@ Class 3와 독립 작업이다.
 - `web/class1_internal/`
 - `schemas/openapi/class1-internal.yaml`
 
-입력: M6 버전된 모델·지표 결과와 공통 월 사실.
+입력: M10 버전된 모델·지표 결과와 공통 월 사실.
 
 출력: 업체 검색, 검토 요약, 1-hop, 가지형 2-hop, 관계표, 보조지표.
 
@@ -194,7 +252,7 @@ Class 3와 독립 작업이다.
 
 완료 조건: 정식 내부 사용자 여정이 Streamlit 없이 동작한다.
 
-### M8. Streamlit QA 격리
+### M12. Streamlit QA 격리
 
 대상:
 
@@ -214,12 +272,14 @@ Class 3와 독립 작업이다.
 
 ```mermaid
 flowchart LR
-    M0["M0 문서"] --> M1["M1 공통 집계 계약"] --> M2["M2 월별 Parquet"]
-    M2 --> M3["M3 Class 3 집계·보호"] --> M4["M4 Class 3 웹"] --> M5["M5 Class 3 퇴역"]
-    M2 --> M6["M6 Class 1 모델"] --> M7["M7 Class 1 웹"] --> M8["M8 Streamlit 격리"]
+    M0["M0 문서"] --> M1["M1 공통 사실 계약"] --> M2["M2 Class 3 mock 셸"]
+    M2 --> M3["M3 시각 체계·디자인 조정"] --> M4["M4 월별 Parquet"]
+    M4 --> M5["M5 검색·집계·보호"] --> M6["M6 실제 공개 API"] --> M7["M7 웹·실데이터 연결"]
+    M7 --> M8["M8 기업 경계"] --> M9["M9 MCDM active route 격리"]
+    M9 --> M10["M10 Class 1 모델"] --> M11["M11 Class 1 웹"] --> M12["M12 Streamlit 격리"]
 ```
 
-M3~M5와 M6~M8은 M2 이후 독립 브랜치·PR 열로 진행한다. 한쪽의 모델·UI 변경이 다른 쪽의 승인을 막아서는 안 된다.
+M2~M3은 실데이터보다 앞선 mock 전용 UI 열이다. M4 이후에는 Class 3 실데이터·보호·API 연결을 완료하고 기존 MCDM active route를 격리한 뒤 Class 1 모델·웹 전환을 진행한다. 각 단계는 별도 PR이며 mock UI PR에 실데이터·인증·정책 임계값·기존 코드 격리를 섞지 않는다.
 
 ## 데이터 전환과 검증
 

@@ -61,15 +61,16 @@ flowchart LR
 | `month` | `YYYYMM` | 파티션 키, 공급내역기준연월 |
 | `src_company_id` | string | 내부 안정 업체 ID; 공개 API 출력 금지 |
 | `dst_company_id` | string | 내부 안정 거래처 ID; 공개 API 출력 금지 |
-| `product_id` | string | 3-key 기반 내부 제품 키 |
+| `product_id` | string | 정규화되고 완전한 3-key 기반 내부 제품 키 |
 | `item_group_id` | string/null | 품목군 검색·집계 키; 결측 여부 보존 |
 | `item_name_id` | string/null | 품목명 검색·집계 키; 품목군과 혼용 금지 |
-| `tx_count` | integer | 보고·거래 행 건수 |
+| `tx_count` | integer | `(source_version, source_row_id)` 중복 제거 후 보고·거래 행 건수 |
 | `amount_sum_clean` | decimal | 정제된 공급금액 합계 |
 | `amount_valid_row_count` | integer | 금액 유효률 계산용 분모 정보 |
 | `raw_supply_qty_sum` | decimal | 원본 공급수량 합계 |
 | `piece_qty_sum` | decimal/null | 포장내 총 수량을 반영한 낱개 수량 합계 |
-| `qty_valid_row_count` | integer | 수량 유효률 계산용 |
+| `raw_supply_qty_valid_row_count` | integer | 원본 공급수량 유효률 계산용 |
+| `piece_qty_valid_row_count` | integer | 낱개 수량 유효률 계산용 |
 | `unique_udi_count` | integer | 제품 다양성 보조 사실 |
 | `active_day_count` | integer | 월내 활동 지속성 |
 | `supplier_type`, `receiver_type` | code/null | 역할·업종 구성 집계용 |
@@ -81,6 +82,16 @@ flowchart LR
 - **Locked decision** — 금액·수량 합계와 함께 유효 행 수 또는 유효률을 저장한다.
 - **Decision required** — `piece_qty_sum`의 공식은 `공급수량 × 포장내 총 수량`을 권장하지만, 반품·회수·부분 낱개 회수와 UDI 포장단위 예외를 NIDS가 승인해야 한다.
 - **Implementation risk** — 품목군이 결측일 때 품목명을 품목군으로 대체하는 현재 Class 3 로직은 분류 체계를 섞는다. 목표 계약은 둘을 분리하고 `unknown`/결측을 명시한다.
+
+### 집계 전 식별·중복·부호 계약
+
+- **Locked decision** — `product_id`를 만들기 전에 3-key 각 값을 공식 필드형에 따라 정규화한다. 앞뒤 공백과 정수형 코드의 문자열/숫자 dtype 차이를 제거하되, 사전 정의 없이 일반 문자열의 선행 0을 버리지 않는다.
+- **Locked decision** — 정규화된 3-key 튜플을 길이 구분이 가능한 직렬화 형식으로 만든 뒤 안정 해시를 계산한다. 동일한 공식 코드가 공백이나 dtype 차이 때문에 다른 `product_id`가 되어서는 안 된다.
+- **Locked decision** — 3-key 구성요소 중 하나라도 null, 빈 문자열, 비정상 값이면 정상 `product_id`를 만들지 않고 `blocked:product_key_invalid`로 격리한다.
+- **Locked decision** — 집계 입력 행은 `source_version`과 원천 내 불변 `source_row_id`를 가져야 하며, `(source_version, source_row_id)`를 멱등 키로 중복 제거한 뒤에만 `tx_count`와 합계를 계산한다. 원천 행 ID는 집계 사실이나 서비스 응답에 노출하지 않는다.
+- **Locked decision** — 원천 식별자가 없을 때의 책임은 원본 적재 adapter에 있다. 승인된 불변 레코드 키나 파일 내 행 위치로 재현 가능한 ID를 만들 수 없으면 manifest를 `blocked:deduplication_unverified`로 기록하고 월 사실을 산출하지 않는다.
+- **Locked decision** — 일반 공급 거래에서 음수 금액·원본 수량·낱개 수량은 합산하지 않고 `blocked:negative_forward_value` 오류 또는 품질 차단 상태로 처리한다.
+- **Locked decision** — 반품·회수는 거래 구분별 부호 정책이 승인되기 전 월 사실에 집계하지 않고 `blocked:transaction_sign_policy_pending`으로 분리한다.
 
 ## 분석 계층 분리
 

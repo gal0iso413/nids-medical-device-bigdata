@@ -6,8 +6,9 @@
 
 ## 순서 원칙
 
-- 공통 월 집계가 Class 1/3보다 먼저다.
-- Class 3와 Class 1은 공통 계약 이후 별도 PR 열로 진행한다.
+- 공통 월 사실 계약이 Class 1/3보다 먼저다.
+- PR-01 직후 Class 3 mock 계약과 정적 웹을 먼저 검증하고, 그 화면 계약이 안정된 뒤 Parquet·실데이터·공개 보호를 연결한다.
+- Class 3 실데이터 열과 Class 1 열은 공통 계약 이후 분리하되, 이 로드맵의 승인 순서를 따른다.
 - 모델 입력 변경, API 변경, UI 변경, 기존 코드 삭제를 한 PR에 섞지 않는다.
 - 각 PR은 synthetic fixture로 검증하고 생산 학습·대용량 실행은 별도 승인 작업으로 둔다.
 - 패키지·프레임워크 설치는 해당 ADR/기술 선택 승인 후 별도 PR에서만 한다.
@@ -54,7 +55,7 @@ tests/fixtures/supply_monthly_small.*
 입력:
 
 - synthetic pandas DataFrame fixture
-- 공급자·수령자 ID, 3-key 제품 키, 품목군·품목명, 월, 거래 구분
+- 공급자·수령자 ID, 원본 3-key, `source_version`, `source_row_id`, 품목군·품목명, 월, 거래 구분
 - 공급금액·공급단가·공급수량·포장내 총 수량
 
 출력:
@@ -62,6 +63,8 @@ tests/fixtures/supply_monthly_small.*
 - `fact_company_counterparty_product_month` DataFrame
 - 스키마·dtype·nullable·quality flag 정의
 - `tx_count`, `amount_sum_clean`, `raw_supply_qty_sum`, `piece_qty_sum` 분리
+- `raw_supply_qty_valid_row_count`, `piece_qty_valid_row_count` 분리
+- product-key·deduplication·forward-value 차단 상태
 
 포함하지 않음:
 
@@ -78,18 +81,60 @@ tests/fixtures/supply_monthly_small.*
 - 같은 업체쌍·다른 제품은 별도 사실 행
 - 금액/건수/수량 단위 분리
 - 품목군 결측 시 품목명을 품목군으로 대체하지 않음
+- 3-key의 공백과 공식 코드 dtype 차이가 달라도 같은 정규형과 `product_id`
+- null·빈 값·불완전 3-key에서 정상 `product_id` 생성 차단
 - 3-key가 같지 않으면 UDI가 같아도 합치지 않음
-- 반품·회수 fixture는 승인 전 명시적 오류 또는 미결정 상태
+- 같은 `(source_version, source_row_id)`가 반복되어도 한 번만 집계
+- 원천 식별자가 없고 승인 대체키도 없으면 `blocked:deduplication_unverified`
+- 일반 공급의 음수 금액·수량 fixture는 명시적 오류 또는 품질 차단
+- 반품·회수 fixture는 승인 전 `blocked:transaction_sign_policy_pending`
 
 완료 조건:
 
 - 스키마 snapshot이 문서 계약과 일치
 - 기존 Class 1/3 코드를 호출하지 않는 독립 모듈
+- 원천 식별·3-key·부호 차단을 통과한 행만 월 사실에 포함
 - 생산 파일·모델을 실행하지 않고 테스트 통과
 
 선행 결정:
 
 - **Decision required** — `piece_qty_sum` 공식과 거래 구분별 부호. 해결되지 않으면 해당 필드는 nullable+quality flag로 구현하고 반품·회수 집계를 차단한다.
+
+## Class 3 mock UI 선행 열
+
+이 열은 PR-01 직후 시작한다. 목표 런타임 데이터 흐름을 대체하지 않으며, 화면·상호작용 계약을 실데이터 작업보다 먼저 검증하는 임시 개발 경계다.
+
+### PR-C3-UI-01A — mock API 계약과 정적 웹 셸
+
+범위: 버전된 mock 응답 스키마, 정적 진입점, 라우팅 없는 화면 셸, fixture loader.
+
+제외: 실데이터, Parquet, 인증, 공개 정책 임계값, 기존 MCDM active route 격리, 런타임 mock fallback.
+
+완료: fixture 스키마가 품목별 결과·포트폴리오·결측·억제 빈 상태를 구분하고, production API로 오인될 수 있는 endpoint가 없다.
+
+### PR-C3-UI-01B — 혁신 시안 시각 체계 이전
+
+범위: 승인된 색상·타이포그래피·검색 영역·카드/비교표 위계·접근성 패턴만 정적 웹 셸에 이전.
+
+제외: 기존 혁신 시안의 정보 구조, 생성 진단 문장, 단일 품목 흐름, 성장×HHI 중심 구조.
+
+완료: 시각 토큰 출처가 문서화되고 기존 mock 정보 구조에 대한 런타임 의존이 없다.
+
+### PR-C3-UI-01C — 핵심 비교 상호작용과 상태
+
+범위: 다중 품목 검색, 기간 선택, 품목별 비교표, 월별 추세, 포트폴리오 요약, loading/error/empty/suppressed/missing 상태.
+
+제외: 실제 검색 dimension, 실제 API, 인증 기업 기능, 승인 전 억제 임계값.
+
+완료: mock fixture E2E와 접근성·responsive 테스트가 통과하며 품목별 결과와 포트폴리오가 혼합되지 않는다.
+
+### PR-C3-UI-01D — Cursor 디자인 조정
+
+범위: 사용자가 실제 화면을 확인하며 수행하는 레이아웃·간격·타이포그래피·responsive 세부 조정.
+
+제외: 제품 계약, API 스키마, 데이터 의미, 공개 정책, 인증 경계 변경.
+
+완료: 승인된 화면 상태별 시각 회귀 기준과 디자인 검토 기록이 남는다.
 
 ### PR-02 — 월별 Parquet writer와 manifest
 
@@ -149,13 +194,13 @@ tests/fixtures/supply_monthly_small.*
 
 완료: 공개 스키마 snapshot·rate limit·보안 테스트 통과.
 
-### PR-C3-05 — 공개 웹 셸과 다중 비교
+### PR-C3-UI-02 — 확정 웹 화면과 실제 API 연결
 
-범위: 혁신 시안 시각 토큰 이전, 다중 검색, 품목별 비교, 포트폴리오, 도달 구조, 억제·결측 상태.
+범위: PR-C3-UI-01에서 확정한 화면 상태를 PR-C3-04 실제 API, 검색 dimension, 품목별 집계, 공개 보호 결과에 연결.
 
-제외: 기존 Class 3 삭제, 기업 모드.
+제외: 기존 Class 3 active route 격리, 기업 모드, production 응답 실패 시 mock fallback.
 
-완료: 접근성·responsive·fixture E2E 통과, mock JSON 런타임 의존 없음.
+완료: 접근성·responsive·API E2E 통과, mock JSON 런타임 의존 없음, 억제·결측 응답이 확정된 빈 상태로 표시됨.
 
 ### PR-C3-06 — 인증 기업 경계
 
@@ -242,7 +287,8 @@ tests/fixtures/supply_monthly_small.*
 |---|---|
 | 공통 데이터 PR | React/FastAPI, GAD-NR, MCDM 삭제, 공개 정책 임계값 |
 | Class 3 집계 PR | Class 1 특징·모델 파일 |
-| Class 3 UI PR | 공개 억제 우회 mock fallback, Class 1 UI |
+| Class 3 mock UI PR | 실데이터, 인증, 공개 정책 임계값, 기존 MCDM 격리, production mock fallback |
+| Class 3 실제 API 연결 PR | 공개 억제 우회 mock fallback, Class 1 UI |
 | Class 1 모델 PR | Class 3 코드, 웹 프레임워크 |
 | Class 1 UI PR | 모델 재학습·특징 변경 |
 | 삭제 PR | 신규 기능, 의존성 업그레이드, 대규모 포맷 변경 |
