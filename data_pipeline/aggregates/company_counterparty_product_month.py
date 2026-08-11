@@ -13,6 +13,7 @@ from data_pipeline.contracts.supply_monthly import (
     BLOCK_TRANSACTION_TYPE_UNKNOWN,
     MONTHLY_FACT_COLUMNS,
     ContractValidationError,
+    _bounded_diagnostic,
     assign_product_ids,
     empty_monthly_fact,
     normalize_source_rows,
@@ -36,13 +37,14 @@ def _raise_for_transaction_types(transaction_types: pd.Series) -> None:
     if pending:
         raise UnsupportedTransactionTypeError(
             f"{BLOCK_TRANSACTION_SIGN_POLICY_PENDING}: return/recall rows cannot "
-            f"be aggregated before sign-policy approval; found: {pending}"
+            "be aggregated before sign-policy approval; found: "
+            f"{_bounded_diagnostic(pending)}"
         )
     unknown = sorted(values - {FORWARD_TRANSACTION_TYPE})
     if unknown:
         raise UnsupportedTransactionTypeError(
             f"{BLOCK_TRANSACTION_TYPE_UNKNOWN}: unknown transaction types cannot "
-            f"be treated as forward supply; found: {unknown}"
+            f"be treated as forward supply; found: {_bounded_diagnostic(unknown)}"
         )
 
 
@@ -51,12 +53,14 @@ def _raise_for_negative_forward_values(rows: pd.DataFrame) -> None:
         valid = rows[column].dropna()
         negative = valid.lt(Decimal("0"))
         if negative.any():
-            source_ids = sorted(
-                rows.loc[negative.index[negative], "source_row_id"].astype(str).tolist()
+            source_ids = (
+                rows.loc[negative.index[negative], "source_row_id"]
+                .astype("string")
+                .sort_values(kind="stable")
             )
             raise ContractValidationError(
                 f"{BLOCK_NEGATIVE_FORWARD_VALUE}: {column!r} is negative for "
-                f"source_row_id values: {source_ids}"
+                f"source_row_id values: {_bounded_diagnostic(source_ids)}"
             )
 
 
@@ -104,7 +108,7 @@ def aggregate_company_counterparty_product_month(rows: pd.DataFrame) -> pd.DataF
     if len(source_versions) != 1:
         raise ContractValidationError(
             "One aggregation call must contain exactly one source_version; "
-            f"found: {source_versions}"
+            f"found: {_bounded_diagnostic(source_versions)}"
         )
     source_version = source_versions[0]
 

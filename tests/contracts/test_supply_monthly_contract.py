@@ -5,8 +5,10 @@ from __future__ import annotations
 from decimal import Decimal
 import json
 from pathlib import Path
+import re
 import unittest
 
+import numpy as np
 import pandas as pd
 
 from data_pipeline.aggregates.company_counterparty_product_month import (
@@ -20,6 +22,7 @@ from data_pipeline.contracts.supply_monthly import (
     MONTHLY_FACT_SCHEMA,
     ContractValidationError,
     build_product_id,
+    empty_monthly_fact,
     normalize_source_rows,
     validate_monthly_fact,
 )
@@ -105,6 +108,25 @@ class SupplyMonthlyContractTests(unittest.TestCase):
         )
         self.assertNotIn("source_row_id", fact.columns)
 
+    def test_empty_monthly_fact_passes_full_dtype_validation(self) -> None:
+        empty = empty_monthly_fact()
+        actual = validate_monthly_fact(empty)
+        pd.testing.assert_frame_equal(actual, empty)
+
+    def test_empty_fact_with_all_object_dtypes_is_rejected(self) -> None:
+        invalid = pd.DataFrame(columns=MONTHLY_FACT_COLUMNS)
+        self.assertTrue(all(str(dtype) == "object" for dtype in invalid.dtypes))
+        with self.assertRaisesRegex(ContractValidationError, "dtypes"):
+            validate_monthly_fact(invalid)
+
+    def test_empty_fact_with_float_decimal_dtype_is_rejected(self) -> None:
+        invalid = empty_monthly_fact()
+        invalid["amount_sum_clean"] = pd.Series(dtype="float64")
+        with self.assertRaisesRegex(
+            ContractValidationError, "amount_sum_clean"
+        ):
+            validate_monthly_fact(invalid)
+
     def test_product_id_normalizes_whitespace_and_official_numeric_dtypes(self) -> None:
         product_ids = {
             build_product_id(" 10 ", "20", "30"),
@@ -117,6 +139,44 @@ class SupplyMonthlyContractTests(unittest.TestCase):
             product_ids.pop(),
             "p3:5abac8d678c93550a6befe9461f5b36550deb212002577ae32b0e87770f94684",
         )
+        self.assertEqual(
+            build_product_id(Decimal("9007199254740993"), 20, 30),
+            build_product_id("9007199254740993", 20, 30),
+        )
+
+    def test_object_dtype_safe_float_is_normalized(self) -> None:
+        source = self.one_row()
+        source["item_serial"] = source["item_serial"].astype(object)
+        source.at[0, "item_serial"] = 10.0
+        normalized = normalize_source_rows(source)
+        self.assertEqual(normalized.loc[0, "item_serial"], "10")
+
+    def test_object_dtype_precision_unsafe_float_is_blocked(self) -> None:
+        for value in (float(2**53 + 2), np.float64(2**53 + 2)):
+            with self.subTest(value_type=type(value).__name__):
+                source = self.one_row()
+                source["item_serial"] = source["item_serial"].astype(object)
+                source.at[0, "item_serial"] = value
+                with self.assertRaisesRegex(
+                    ContractValidationError, "blocked:product_key_invalid"
+                ):
+                    normalize_source_rows(source)
+
+    def test_nonfinite_float_product_keys_are_blocked(self) -> None:
+        for value in (
+            float("inf"),
+            float("-inf"),
+            np.float64("inf"),
+            np.float64("-inf"),
+        ):
+            with self.subTest(value=value):
+                source = self.one_row()
+                source["item_serial"] = source["item_serial"].astype(object)
+                source.at[0, "item_serial"] = value
+                with self.assertRaisesRegex(
+                    ContractValidationError, "blocked:product_key_invalid"
+                ):
+                    normalize_source_rows(source)
 
     def test_general_string_codes_preserve_leading_zeroes(self) -> None:
         source = self.one_row()
@@ -174,6 +234,32 @@ class SupplyMonthlyContractTests(unittest.TestCase):
                     ContractValidationError, "blocked:deduplication_unverified"
                 ):
                     aggregate_company_counterparty_product_month(source)
+
+    def test_diagnostics_are_bounded_to_twenty_samples(self) -> None:
+        def required_text_error(row_count: int) -> str:
+            source = pd.concat(
+                [self.one_row()] * row_count,
+                ignore_index=True,
+            )
+            source["source_row_id"] = [
+                f"bounded-{position}" for position in range(row_count)
+            ]
+            source["src_company_id"] = pd.NA
+            with self.assertRaises(ContractValidationError) as context:
+                aggregate_company_counterparty_product_month(source)
+            return str(context.exception)
+
+        message_25 = required_text_error(25)
+        self.assertIn("total=25", message_25)
+        self.assertIn("omitted=5", message_25)
+        sample_match = re.search(r"sample=\[(.*?)\]; omitted=5", message_25)
+        self.assertIsNotNone(sample_match)
+        self.assertEqual(len(sample_match.group(1).split(", ")), 20)
+
+        message_2500 = required_text_error(2500)
+        self.assertIn("total=2500", message_2500)
+        self.assertIn("omitted=2480", message_2500)
+        self.assertLess(abs(len(message_2500) - len(message_25)), 20)
 
     def test_aggregate_preserves_grain_units_and_separate_valid_counts(self) -> None:
         original = self.source.copy(deep=True)
