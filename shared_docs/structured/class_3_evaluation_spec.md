@@ -1,7 +1,7 @@
 # Class 3 — Impact Evaluation Specification
 
-> **Status:** Active — proposal and kickoff bodies populated; PM may refine weights below.
-> **Authority:** Supersedes `official/` interpretations for Agent 3 analytical mandate when in conflict.
+> **Status:** Historical MCDM/impact-evaluation mandate; superseded for product implementation.
+> **Authority:** Retained as source context only. `docs/decisions/class3-rebuild-decision.md` and `docs/specs/class3-company-product-comparison.md` govern current Class 3 implementation.
 
 ## Scope
 

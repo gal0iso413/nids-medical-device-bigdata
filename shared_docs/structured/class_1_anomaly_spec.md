@@ -1,7 +1,7 @@
 # Class 1 — Anomaly Detection Specification
 
-> **Status:** Active — proposal and kickoff bodies populated; PM may refine thresholds below.
-> **Authority:** Supersedes `official/` interpretations for Agent 1 analytical mandate when in conflict.
+> **Status:** Historical analytical mandate retained as source context.
+> **Authority:** Field and problem context remains informative. Current product/model implementation is governed by `docs/decisions/class1-gadnr-feature-contract.md` and `docs/specs/class1-internal-monitoring-web.md` when this document conflicts with them.
 
 ## Scope
 
