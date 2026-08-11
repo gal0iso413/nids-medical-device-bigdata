@@ -1,0 +1,37 @@
+{
+  "schema_version": "class3-mock-view-v1",
+  "data_version": "synthetic-fixture-v1",
+  "policy_version": "development-unapproved",
+  "synthetic": true,
+  "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "view_state": "results",
+  "release_status": "insufficient_coverage",
+  "selection_summary": {
+    "selections": [
+      { "type": "item_group", "id": "synthetic:item-group:alpha", "label": "SYNTHETIC_ITEM_GROUP_ALPHA" },
+      { "type": "item_name", "id": "synthetic:item-name:beta", "label": "SYNTHETIC_ITEM_NAME_BETA" }
+    ],
+    "period": { "start_month": "2099-01", "end_month": "2099-03" }
+  },
+  "per_item_results": [
+    { "selection_id": "synthetic:item-group:alpha", "selection_type": "item_group", "release_status": "insufficient_coverage", "notice": "Synthetic insufficient-coverage state; no cutoff is defined here." },
+    { "selection_id": "synthetic:item-name:beta", "selection_type": "item_name", "release_status": "insufficient_coverage", "notice": "Synthetic insufficient-coverage state; no cutoff is defined here." }
+  ],
+  "portfolio_summary": {
+    "release_status": "insufficient_coverage",
+    "notice": "Portfolio summary is unavailable because coverage is insufficient."
+  },
+  "observed_reach": {
+    "release_status": "insufficient_coverage",
+    "notice": "Observed-reach structure is unavailable because coverage is insufficient."
+  },
+  "coverage": {
+    "release_status": "insufficient_coverage",
+    "field_states": [
+      { "field": "reported_activity", "state": "missing", "notice": "Synthetic missing-data marker." },
+      { "field": "raw_supply_quantity", "state": "missing", "notice": "Synthetic missing-data marker." },
+      { "field": "supplier_recipient_counts", "state": "missing", "notice": "Synthetic missing-data marker." },
+      { "field": "industry_region_composition", "state": "missing", "notice": "Synthetic missing-data marker." }
+    ]
+  }
+}
