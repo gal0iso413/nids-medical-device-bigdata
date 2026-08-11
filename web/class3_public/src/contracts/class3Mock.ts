@@ -5,11 +5,12 @@ export const releaseStatuses = [
   "suppressed_differencing",
   "insufficient_coverage",
   "not_available",
-  "empty",
 ] as const;
 
 export type ReleaseStatus = (typeof releaseStatuses)[number];
-export type SelectionType = "product_group" | "product_name";
+export const viewStates = ["results", "empty"] as const;
+export type ViewState = (typeof viewStates)[number];
+export type SelectionType = "item_group" | "item_name";
 
 export interface SelectionItem {
   type: SelectionType;
@@ -55,6 +56,7 @@ export interface Class3MockFixture {
   policy_version: "development-unapproved";
   synthetic: true;
   development_notice: string;
+  view_state: ViewState;
   release_status: ReleaseStatus;
   selection_summary: {
     selections: SelectionItem[];

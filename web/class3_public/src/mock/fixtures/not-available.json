@@ -4,17 +4,18 @@
   "policy_version": "development-unapproved",
   "synthetic": true,
   "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "view_state": "results",
   "release_status": "not_available",
   "selection_summary": {
     "selections": [
-      { "type": "product_group", "id": "synthetic:group:alpha", "label": "SYNTHETIC_PRODUCT_GROUP_ALPHA" },
-      { "type": "product_name", "id": "synthetic:item:beta", "label": "SYNTHETIC_PRODUCT_NAME_BETA" }
+      { "type": "item_group", "id": "synthetic:item-group:alpha", "label": "SYNTHETIC_ITEM_GROUP_ALPHA" },
+      { "type": "item_name", "id": "synthetic:item-name:beta", "label": "SYNTHETIC_ITEM_NAME_BETA" }
     ],
     "period": { "start_month": "2099-01", "end_month": "2099-03" }
   },
   "per_item_results": [
-    { "selection_id": "synthetic:group:alpha", "selection_type": "product_group", "release_status": "not_available", "notice": "Synthetic not-available state." },
-    { "selection_id": "synthetic:item:beta", "selection_type": "product_name", "release_status": "not_available", "notice": "Synthetic not-available state." }
+    { "selection_id": "synthetic:item-group:alpha", "selection_type": "item_group", "release_status": "not_available", "notice": "Synthetic not-available state." },
+    { "selection_id": "synthetic:item-name:beta", "selection_type": "item_name", "release_status": "not_available", "notice": "Synthetic not-available state." }
   ],
   "portfolio_summary": {
     "release_status": "not_available",

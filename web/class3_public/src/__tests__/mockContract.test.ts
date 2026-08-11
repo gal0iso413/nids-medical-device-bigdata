@@ -2,12 +2,17 @@
 
 import Ajv from "ajv";
 import { describe, expect, it } from "vitest";
-import { releaseStatuses } from "../contracts/class3Mock";
-import { fixtureCatalog } from "../mock/fixtures";
+import {
+  releaseStatuses,
+  viewStates,
+  type Class3MockFixture,
+} from "../contracts/class3Mock";
+import { validateDevelopmentFixture } from "../mock/developmentAdapter";
+import { fixtureCatalog, mockFixtureNames } from "../mock/fixtures";
 import schema from "../mock/schema/class3-mock-view.schema.json";
 
 const ajv = new Ajv({ allErrors: true, strict: true, strictRequired: false });
-const validate = ajv.compile(schema);
+const validate = ajv.compile<Class3MockFixture>(schema);
 
 function collectKeys(value: unknown, keys: string[] = []): string[] {
   if (Array.isArray(value)) {
@@ -34,16 +39,39 @@ describe("Class 3 development mock contract", () => {
     }
   });
 
-  it("provides exactly one fixture for each required release state", () => {
-    expect(Object.keys(fixtureCatalog).sort()).toEqual([...releaseStatuses].sort());
+  it("defines exactly the six approved release statuses", () => {
+    expect(releaseStatuses).toEqual([
+      "released",
+      "suppressed_small_cell",
+      "suppressed_dominance",
+      "suppressed_differencing",
+      "insufficient_coverage",
+      "not_available",
+    ]);
+    expect(releaseStatuses).not.toContain("empty");
   });
 
-  it("keeps product-group and product-name selection types distinct", () => {
+  it("defines results and empty as view states, not release states", () => {
+    expect(viewStates).toEqual(["results", "empty"]);
+    expect(fixtureCatalog.released.view_state).toBe("results");
+    expect(mockFixtureNames).toEqual([
+      "released",
+      "suppressed_small_cell",
+      "suppressed_dominance",
+      "suppressed_differencing",
+      "insufficient_coverage",
+      "not_available",
+      "empty",
+    ]);
+    expect(Object.keys(fixtureCatalog)).toEqual([...mockFixtureNames]);
+  });
+
+  it("keeps item-group and item-name selection types distinct", () => {
     const types = fixtureCatalog.released.selection_summary.selections.map(
       (selection) => selection.type,
     );
-    expect(types).toContain("product_group");
-    expect(types).toContain("product_name");
+    expect(types).toContain("item_group");
+    expect(types).toContain("item_name");
   });
 
   it("keeps per-item results and portfolio summary as separate structures", () => {
@@ -85,12 +113,26 @@ describe("Class 3 development mock contract", () => {
   });
 
   it("rejects a fixture without the synthetic marker", () => {
-    const invalid = structuredClone(fixtureCatalog.released) as unknown as Record<
-      string,
-      unknown
-    >;
-    delete invalid.synthetic;
+    const { synthetic: _synthetic, ...invalid } = structuredClone(
+      fixtureCatalog.released,
+    );
     expect(validate(invalid)).toBe(false);
+    expect(() => validateDevelopmentFixture(invalid, "missing-synthetic")).toThrow(
+      "Invalid development fixture missing-synthetic",
+    );
+  });
+
+  it("keeps the empty fixture value-free and separate from release status", () => {
+    const fixture = validateDevelopmentFixture(fixtureCatalog.empty, "empty");
+    expect(fixture.view_state).toBe("empty");
+    expect(fixture.release_status).toBe("released");
+    expect(fixture.per_item_results).toEqual([]);
+    expect(fixture.portfolio_summary.release_status).toBe("not_available");
+    expect(fixture.observed_reach.release_status).toBe("not_available");
+    expect(fixture.coverage.release_status).toBe("not_available");
+    expect(collectKeys(fixture)).not.toContain("released_content");
+    expect(collectKeys(fixture)).not.toContain("released_composition");
+    expect(collectKeys(fixture)).not.toContain("released_stages");
   });
 
   it("does not define additive quantity or cross-item HHI fields", () => {

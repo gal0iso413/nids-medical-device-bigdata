@@ -4,18 +4,19 @@
   "policy_version": "development-unapproved",
   "synthetic": true,
   "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "view_state": "results",
   "release_status": "released",
   "selection_summary": {
     "selections": [
-      { "type": "product_group", "id": "synthetic:group:alpha", "label": "SYNTHETIC_PRODUCT_GROUP_ALPHA" },
-      { "type": "product_name", "id": "synthetic:item:beta", "label": "SYNTHETIC_PRODUCT_NAME_BETA" }
+      { "type": "item_group", "id": "synthetic:item-group:alpha", "label": "SYNTHETIC_ITEM_GROUP_ALPHA" },
+      { "type": "item_name", "id": "synthetic:item-name:beta", "label": "SYNTHETIC_ITEM_NAME_BETA" }
     ],
     "period": { "start_month": "2099-01", "end_month": "2099-03" }
   },
   "per_item_results": [
     {
-      "selection_id": "synthetic:group:alpha",
-      "selection_type": "product_group",
+      "selection_id": "synthetic:item-group:alpha",
+      "selection_type": "item_group",
       "release_status": "released",
       "notice": "Development-only released-state placeholder.",
       "released_content": {
@@ -25,8 +26,8 @@
       }
     },
     {
-      "selection_id": "synthetic:item:beta",
-      "selection_type": "product_name",
+      "selection_id": "synthetic:item-name:beta",
+      "selection_type": "item_name",
       "release_status": "released",
       "notice": "Development-only released-state placeholder.",
       "released_content": {
@@ -41,8 +42,8 @@
     "notice": "Development-only portfolio composition placeholder.",
     "released_composition": {
       "entries": [
-        { "selection_id": "synthetic:group:alpha", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" },
-        { "selection_id": "synthetic:item:beta", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" }
+        { "selection_id": "synthetic:item-group:alpha", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" },
+        { "selection_id": "synthetic:item-name:beta", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" }
       ],
       "non_additive_notice": "Per-item quantities and concentration indicators are not combined."
     }

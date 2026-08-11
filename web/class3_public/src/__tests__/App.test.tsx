@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import App from "../App";
-import { fixtureCatalog } from "../mock/fixtures";
+import { loadDevelopmentMock } from "../mock/developmentAdapter";
+
+const releasedFixture = loadDevelopmentMock("released");
+const emptyFixture = loadDevelopmentMock("empty");
 
 const requiredHeadings = [
   "업체·품목군 비교분석",
@@ -23,14 +26,16 @@ describe("Class 3 static shell", () => {
   });
 
   it("provides accessible headings for every required shell area", () => {
-    render(<App initialState={{ kind: "fixture", fixture: fixtureCatalog.released }} />);
+    render(<App initialState={{ kind: "fixture", fixture: releasedFixture }} />);
 
     for (const heading of requiredHeadings) {
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
 
-    expect(screen.getByLabelText("품목군 검색")).toBeDisabled();
-    expect(screen.getByLabelText("품목명 검색")).toBeDisabled();
+    const searchInputs = screen.getAllByRole("searchbox");
+    expect(searchInputs).toHaveLength(1);
+    expect(screen.getByLabelText("품목군 또는 품목명 검색")).toBeDisabled();
+    expect(screen.getByPlaceholderText("품목군·품목명을 한 번에 검색하는 영역")).toBeDisabled();
     expect(screen.getByLabelText("시작 월")).toBeDisabled();
     expect(screen.getByLabelText("종료 월")).toBeDisabled();
   });
@@ -45,8 +50,9 @@ describe("Class 3 static shell", () => {
   });
 
   it("renders the empty result separately from unavailable", () => {
-    render(<App initialState={{ kind: "fixture", fixture: fixtureCatalog.empty }} />);
+    render(<App initialState={{ kind: "fixture", fixture: emptyFixture }} />);
     expect(screen.getByText("조건에 맞는 결과가 없습니다.")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("결과 없음 상태 예시");
+    expect(emptyFixture.per_item_results).toHaveLength(0);
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from "vitest";
-import { fixtureCatalog } from "../mock/fixtures";
+import { loadDevelopmentMock } from "../mock/developmentAdapter";
 import {
   resolveClass3PageState,
   selectDataSource,
@@ -19,7 +19,7 @@ describe("Class 3 runtime data-source boundary", () => {
   });
 
   it("never selects or loads the mock adapter in production", async () => {
-    const loadMock = vi.fn(async () => fixtureCatalog.released);
+    const loadMock = vi.fn(async () => loadDevelopmentMock("released"));
     const state = await resolveClass3PageState(
       {
         mode: "production",
@@ -34,7 +34,7 @@ describe("Class 3 runtime data-source boundary", () => {
   });
 
   it("loads the explicitly selected development fixture", async () => {
-    const loadMock = vi.fn(async () => fixtureCatalog.empty);
+    const loadMock = vi.fn(async () => loadDevelopmentMock("empty"));
     const state = await resolveClass3PageState(
       {
         mode: "development",

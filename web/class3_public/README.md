@@ -10,7 +10,7 @@ PR-C3-UI-01A의 mock 화면 계약과 라우팅 없는 정적 웹 셸이다. 이
 - npm과 `package-lock.json`
 - Vitest, jsdom, React Testing Library, Ajv는 개발·검증 전용
 
-Vite 8.2.1의 [공식 Node.js 지원 범위](https://vite.dev/guide/)에 맞춰 `package.json`의 `engines.node`를 `^20.19.0 || >=22.12.0`으로 설정했다. npm 지원 범위는 `>=10.0.0`이다.
+설치된 Vite·Vitest·jsdom의 engine 교집합에 맞춰 `package.json`의 `engines.node`를 `^20.19.0 || ^22.12.0 || >=24.0.0`으로 설정했다. Vite 자체의 범위는 [공식 Node.js 지원 문서](https://vite.dev/guide/)에서 확인할 수 있다. npm 지원 범위는 `>=10.0.0`이다.
 
 이 PR에서 실제 검증한 환경:
 

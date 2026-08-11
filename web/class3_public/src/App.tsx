@@ -12,7 +12,6 @@ const statusLabels: Record<ReleaseStatus, string> = {
   suppressed_differencing: "차분 위험 억제 상태 예시",
   insufficient_coverage: "데이터 범위 부족 상태 예시",
   not_available: "제공 전 상태 예시",
-  empty: "결과 없음 상태 예시",
 };
 
 interface AppProps {
@@ -20,6 +19,9 @@ interface AppProps {
 }
 function statusMessage(state: Class3PageState): string {
   if (state.kind === "fixture") {
+    if (state.fixture.view_state === "empty") {
+      return "결과 없음 상태 예시";
+    }
     return statusLabels[state.fixture.release_status];
   }
   return state.message;
@@ -71,16 +73,14 @@ export default function App({ initialState }: AppProps) {
 
       <section aria-labelledby="search-heading">
         <h2 id="search-heading">품목군·품목명 검색</h2>
-        <div className="field-grid">
-          <label>
-            품목군 검색
-            <input type="search" placeholder="품목군 다중 검색 자리" disabled />
-          </label>
-          <label>
-            품목명 검색
-            <input type="search" placeholder="품목명 다중 검색 자리" disabled />
-          </label>
-        </div>
+        <label>
+          품목군 또는 품목명 검색
+          <input
+            type="search"
+            placeholder="품목군·품목명을 한 번에 검색하는 영역"
+            disabled
+          />
+        </label>
         <p className="placeholder-note">검색 상호작용은 후속 PR에서 연결합니다.</p>
       </section>
 
@@ -127,7 +127,7 @@ export default function App({ initialState }: AppProps) {
             ))}
           </div>
         ) : (
-          <p>{fixture?.release_status === "empty" ? "조건에 맞는 결과가 없습니다." : "비교 결과를 제공할 수 없습니다."}</p>
+          <p>{fixture?.view_state === "empty" ? "조건에 맞는 결과가 없습니다." : "비교 결과를 제공할 수 없습니다."}</p>
         )}
       </section>
 
