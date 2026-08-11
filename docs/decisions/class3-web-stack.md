@@ -12,10 +12,10 @@
 
 ## 결정 배경
 
-- **Confirmed fact** — Class 3는 내부 분석 화면이 아니라 외부 공개가 가능한 업체·품목군 비교분석 서비스다.
-- **Confirmed fact** — 목표 구조는 프런트엔드와 공개 API의 경계가 분리된 대시보드형 SPA다.
-- **Confirmed fact** — 초기 정적 웹 셸에는 SSR, SEO, 서버 컴포넌트, 다중 route 요구가 없다.
-- **Confirmed fact** — `prototype_meeting/innovation/class3.html`, `class3.css`, `class3.js`는 혁신 시안의 시각 참고 자료이며 신규 웹 런타임이 아니다.
+- **Locked decision** — Class 3는 내부 분석 화면이 아니라 외부 공개가 가능한 업체·품목군 비교분석 서비스다.
+- **Locked decision** — 목표 구조는 프런트엔드와 공개 API의 경계가 분리된 대시보드형 SPA다.
+- **Locked decision** — 초기 정적 웹 셸에는 SSR, SEO, 서버 컴포넌트, 다중 route 요구가 없다.
+- **Locked decision** — `prototype_meeting/innovation/class3.html`, `class3.css`, `class3.js`는 혁신 시안의 시각 참고 자료이며 신규 웹 런타임이 아니다.
 
 ## 확정 기술 선택
 
@@ -54,8 +54,9 @@ PR-C3-UI-01A의 fixture loader는 개발 모드에서 명시적으로 선택되�
 
 ## 버전 정책
 
-- **Decision required** — 최소 지원 Node.js와 npm 버전은 PR-C3-UI-01A에서 실제 프로젝트를 생성할 때 Vite의 공식 지원 범위, CI 실행 환경, 배포 환경을 함께 확인해 고정한다.
-- UI-01A는 확인된 버전을 `package.json`의 engine 정책과 개발 문서에 기록하고, CI에서 같은 범위를 검증해야 한다.
+- **Confirmed fact** — 현재 저장소에는 등록된 GitHub Actions workflow가 없다.
+- **Decision required** — 최소 지원 Node.js와 npm 버전은 PR-C3-UI-01A에서 실제 프로젝트를 생성할 때 Vite의 공식 지원 범위, 로컬 검증 환경, 배포 대상 환경을 함께 확인해 고정한다.
+- **Locked decision** — 저장소 수준 GitHub Actions CI 신규 구축은 UI-01A 범위가 아니며 별도 PR에서 결정한다. UI-01A 구현 시 이미 사용할 수 있는 CI가 존재하는 경우에만 같은 검증 명령을 재사용한다.
 - 이 ADR 단계에서는 Node.js/npm을 설치하거나 지원 버전을 추정해 확정하지 않는다.
 
 ## PR-C3-UI-01A 진입·완료 조건
@@ -71,8 +72,17 @@ PR-C3-UI-01A의 fixture loader는 개발 모드에서 명시적으로 선택되�
 - `web/class3_public/`에 React, Vite, TypeScript strict 기반의 라우팅 없는 정적 웹 셸이 존재한다.
 - npm 외 패키지 관리자의 lockfile이 없고 `package-lock.json`이 재현 가능한 설치 기준이다.
 - 불필요 도입 보류 대상 라이브러리가 dependency에 포함되지 않는다.
-- production build에서 mock 자동 fallback이 불가능하다는 테스트가 통과한다.
+- production build에 mock 자동 fallback 경로가 없다.
 - 혁신 시안 파일에 대한 runtime dependency가 없다.
+
+필수 로컬 검증:
+
+- `package.json`의 `engines`에 지원 Node.js와 npm 범위를 기록한다.
+- 개발 문서에 실제 검증에 사용한 Node.js와 npm 버전을 기록한다.
+- `npm install` 또는 `npm ci`의 재현성을 확인한다.
+- typecheck, test, production build를 로컬에서 실행해 통과시킨다.
+
+GitHub Actions workflow 신규 구축은 이 목록에 포함하지 않는다. UI-01A 구현 시 기존 CI가 있다면 위 명령을 재사용할 수 있지만, CI가 없다는 이유로 UI-01A에서 저장소 수준 CI를 함께 신설하지 않는다.
 
 ## 영향과 재평가 조건
 
