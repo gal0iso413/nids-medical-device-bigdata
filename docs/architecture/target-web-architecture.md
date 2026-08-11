@@ -123,9 +123,14 @@ flowchart LR
 
 ### 프런트엔드
 
-- **Proposed decision** — React 기반 Next.js를 기본 후보로 한다. 이유: 내부/공개 화면의 라우팅·서버 렌더링·정적 자산·접근성 컴포넌트를 한 코드베이스 패턴으로 운영할 수 있고 자체 호스팅이 가능하다. 자체 호스팅 시 역방향 프록시와 다중 인스턴스 캐시 조정이 필요하다. 공식 근거: <https://nextjs.org/docs/app/guides/self-hosting>.
-- 대안: React SPA(Vite 등)는 공개 SEO가 중요하지 않고 API 경계가 명확할 때 더 단순하다. 조직 표준이 Vue/Svelte/서버 템플릿이라면 동등한 접근성·테스트·인증 요건으로 대체할 수 있다.
-- **Decision required** — 조직 표준, 배포 플랫폼, TypeScript 사용 여부를 확인한 뒤 확정한다.
+- **Locked decision** — Class 3 최종 웹은 React, Vite, TypeScript `strict` 모드로 구현하며 대상 경로는 `web/class3_public/`이다. 패키지 관리자는 npm, lockfile은 `package-lock.json`으로 고정한다. 세부 근거와 구현 gate는 [Class 3 웹 기술 스택 결정](../decisions/class3-web-stack.md)을 따른다.
+- **Locked decision** — PR-C3-UI-01A는 라우터 없는 정적 웹 셸로 시작하고 CSS Custom Properties와 일반 CSS 또는 CSS Modules를 사용한다. Tailwind, UI component kit, 전역 상태관리, 차트 라이브러리는 필요성이 확인될 때까지 도입하지 않는다.
+- **Locked decision** — mock fixture는 개발 전용 adapter로 격리한다. production build 또는 runtime이 mock 결과로 자동 fallback해서는 안 되며, 실제 API는 PR-C3-04와 PR-C3-UI-02에서 연결한다.
+- **Locked decision** — `prototype_meeting/innovation/class3.*`는 시각 참고 자료일 뿐 신규 웹의 runtime dependency가 아니다. 기존 단일 품목 흐름, 기업군 3단계 wizard, 진단 문장, 성장×HHI 기회지도는 이전하지 않는다.
+- **Locked decision** — 현재 Class 3에는 Next.js를 채택하지 않는다. 초기 범위에 SSR, SEO, 서버 컴포넌트, 다중 route 요구가 없고 API 경계가 분리된 대시보드형 SPA이므로 서버 runtime과 캐시 운영 복잡성을 추가하지 않는다. 공개 SEO 또는 서버 렌더링 요구가 확정되면 별도 ADR로 재평가한다.
+- **Locked decision** — 전체 데이터 크기는 프런트엔드가 아니라 오프라인 집계, 공개 API 응답 제한, 캐시, 페이지네이션으로 처리한다.
+- **Confirmed fact** — 현재 저장소에는 등록된 GitHub Actions workflow가 없다.
+- **Decision required** — 최소 지원 Node.js와 npm 버전은 실제 PR-C3-UI-01A 생성 시 Vite 공식 지원 범위, 로컬 검증 환경, 배포 대상 환경을 확인해 `package.json`의 `engines`와 개발 문서에 고정한다. UI-01A에서는 설치 재현성과 typecheck·test·production build를 로컬에서 검증한다. 저장소 수준 GitHub Actions CI 신규 구축은 별도 PR에서 결정하며, 구현 시 기존 CI가 있을 경우에만 같은 검증 범위를 재사용한다. 이 결정은 Class 1 프런트엔드 기술을 확정하지 않는다.
 
 ### API
 
@@ -183,5 +188,6 @@ tests/
 
 - [Class 1 GAD-NR 특징 계약](../decisions/class1-gadnr-feature-contract.md)
 - [Class 3 재구축 결정](../decisions/class3-rebuild-decision.md)
+- [Class 3 웹 기술 스택 결정](../decisions/class3-web-stack.md)
 - [Streamlit 전환 계획](../migration/streamlit-to-web-plan.md)
 - [구현 로드맵](../migration/implementation-roadmap.md)
