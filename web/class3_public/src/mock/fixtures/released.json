@@ -1,0 +1,67 @@
+{
+  "schema_version": "class3-mock-view-v1",
+  "data_version": "synthetic-fixture-v1",
+  "policy_version": "development-unapproved",
+  "synthetic": true,
+  "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "release_status": "released",
+  "selection_summary": {
+    "selections": [
+      { "type": "product_group", "id": "synthetic:group:alpha", "label": "SYNTHETIC_PRODUCT_GROUP_ALPHA" },
+      { "type": "product_name", "id": "synthetic:item:beta", "label": "SYNTHETIC_PRODUCT_NAME_BETA" }
+    ],
+    "period": { "start_month": "2099-01", "end_month": "2099-03" }
+  },
+  "per_item_results": [
+    {
+      "selection_id": "synthetic:group:alpha",
+      "selection_type": "product_group",
+      "release_status": "released",
+      "notice": "Development-only released-state placeholder.",
+      "released_content": {
+        "activity_label": "SYNTHETIC_ACTIVITY_DISPLAY",
+        "quantity_label": "SYNTHETIC_PER_ITEM_QUANTITY_DISPLAY",
+        "trend_label": "SYNTHETIC_MONTHLY_TREND_DISPLAY"
+      }
+    },
+    {
+      "selection_id": "synthetic:item:beta",
+      "selection_type": "product_name",
+      "release_status": "released",
+      "notice": "Development-only released-state placeholder.",
+      "released_content": {
+        "activity_label": "SYNTHETIC_ACTIVITY_DISPLAY",
+        "quantity_label": "SYNTHETIC_PER_ITEM_QUANTITY_DISPLAY",
+        "trend_label": "SYNTHETIC_MONTHLY_TREND_DISPLAY"
+      }
+    }
+  ],
+  "portfolio_summary": {
+    "release_status": "released",
+    "notice": "Development-only portfolio composition placeholder.",
+    "released_composition": {
+      "entries": [
+        { "selection_id": "synthetic:group:alpha", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" },
+        { "selection_id": "synthetic:item:beta", "share_label": "SYNTHETIC_COMPOSITION_DISPLAY" }
+      ],
+      "non_additive_notice": "Per-item quantities and concentration indicators are not combined."
+    }
+  },
+  "observed_reach": {
+    "release_status": "released",
+    "notice": "Observed-reach structure placeholder; not a final-destination claim.",
+    "released_stages": [
+      { "stage_label": "SYNTHETIC_STAGE_ORIGIN", "display_label": "SYNTHETIC_REACH_DISPLAY" },
+      { "stage_label": "SYNTHETIC_STAGE_NEXT", "display_label": "SYNTHETIC_REACH_DISPLAY" }
+    ]
+  },
+  "coverage": {
+    "release_status": "released",
+    "field_states": [
+      { "field": "reported_activity", "state": "available", "notice": "Synthetic availability marker." },
+      { "field": "raw_supply_quantity", "state": "available", "notice": "Synthetic availability marker." },
+      { "field": "supplier_recipient_counts", "state": "available", "notice": "Synthetic availability marker." },
+      { "field": "industry_region_composition", "state": "available", "notice": "Synthetic availability marker." }
+    ]
+  }
+}

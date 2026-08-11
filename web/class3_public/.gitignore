@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env.local
+.env.*.local
+
+# The repository root ignores all JSON. These files are required source contracts.
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/mock/schema/*.json
+!src/mock/fixtures/*.json

@@ -1,0 +1,36 @@
+{
+  "schema_version": "class3-mock-view-v1",
+  "data_version": "synthetic-fixture-v1",
+  "policy_version": "development-unapproved",
+  "synthetic": true,
+  "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "release_status": "suppressed_dominance",
+  "selection_summary": {
+    "selections": [
+      { "type": "product_group", "id": "synthetic:group:alpha", "label": "SYNTHETIC_PRODUCT_GROUP_ALPHA" },
+      { "type": "product_name", "id": "synthetic:item:beta", "label": "SYNTHETIC_PRODUCT_NAME_BETA" }
+    ],
+    "period": { "start_month": "2099-01", "end_month": "2099-03" }
+  },
+  "per_item_results": [
+    { "selection_id": "synthetic:group:alpha", "selection_type": "product_group", "release_status": "suppressed_dominance", "notice": "Synthetic dominance suppression state; rule is not defined here." },
+    { "selection_id": "synthetic:item:beta", "selection_type": "product_name", "release_status": "suppressed_dominance", "notice": "Synthetic dominance suppression state; rule is not defined here." }
+  ],
+  "portfolio_summary": {
+    "release_status": "suppressed_dominance",
+    "notice": "Portfolio values are withheld in this synthetic state."
+  },
+  "observed_reach": {
+    "release_status": "suppressed_dominance",
+    "notice": "Observed-reach values are withheld in this synthetic state."
+  },
+  "coverage": {
+    "release_status": "suppressed_dominance",
+    "field_states": [
+      { "field": "reported_activity", "state": "suppressed", "notice": "Synthetic suppression marker." },
+      { "field": "raw_supply_quantity", "state": "suppressed", "notice": "Synthetic suppression marker." },
+      { "field": "supplier_recipient_counts", "state": "suppressed", "notice": "Synthetic suppression marker." },
+      { "field": "industry_region_composition", "state": "suppressed", "notice": "Synthetic suppression marker." }
+    ]
+  }
+}

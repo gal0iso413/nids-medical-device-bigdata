@@ -1,0 +1,214 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.invalid/nids/class3-mock-view-v1.schema.json",
+  "title": "Class 3 development-only mock view contract",
+  "description": "Development-only synthetic screen contract. This is not the production OpenAPI contract or a publication policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "data_version",
+    "policy_version",
+    "synthetic",
+    "development_notice",
+    "release_status",
+    "selection_summary",
+    "per_item_results",
+    "portfolio_summary",
+    "observed_reach",
+    "coverage"
+  ],
+  "properties": {
+    "schema_version": { "const": "class3-mock-view-v1" },
+    "data_version": { "type": "string", "pattern": "^synthetic-fixture-v[0-9]+$" },
+    "policy_version": { "const": "development-unapproved" },
+    "synthetic": { "const": true },
+    "development_notice": {
+      "const": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data."
+    },
+    "release_status": { "$ref": "#/definitions/releaseStatus" },
+    "selection_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selections", "period"],
+      "properties": {
+        "selections": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/selection" }
+        },
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_month", "end_month"],
+          "properties": {
+            "start_month": { "type": "string", "pattern": "^2099-(0[1-9]|1[0-2])$" },
+            "end_month": { "type": "string", "pattern": "^2099-(0[1-9]|1[0-2])$" }
+          }
+        }
+      }
+    },
+    "per_item_results": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/perItemResult" }
+    },
+    "portfolio_summary": { "$ref": "#/definitions/portfolioSummary" },
+    "observed_reach": { "$ref": "#/definitions/observedReach" },
+    "coverage": { "$ref": "#/definitions/coverage" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "release_status": { "const": "empty" } } },
+      "then": { "properties": { "per_item_results": { "type": "array", "maxItems": 0 } } }
+    }
+  ],
+  "definitions": {
+    "releaseStatus": {
+      "enum": [
+        "released",
+        "suppressed_small_cell",
+        "suppressed_dominance",
+        "suppressed_differencing",
+        "insufficient_coverage",
+        "not_available",
+        "empty"
+      ]
+    },
+    "selectionType": { "enum": ["product_group", "product_name"] },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "label"],
+      "properties": {
+        "type": { "$ref": "#/definitions/selectionType" },
+        "id": { "type": "string", "pattern": "^synthetic:(group|item):[a-z-]+$" },
+        "label": { "type": "string", "pattern": "^SYNTHETIC_" }
+      }
+    },
+    "perItemResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection_id", "selection_type", "release_status", "notice"],
+      "properties": {
+        "selection_id": { "type": "string", "pattern": "^synthetic:(group|item):[a-z-]+$" },
+        "selection_type": { "$ref": "#/definitions/selectionType" },
+        "release_status": { "$ref": "#/definitions/releaseStatus" },
+        "notice": { "type": "string", "minLength": 1 },
+        "released_content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["activity_label", "quantity_label", "trend_label"],
+          "properties": {
+            "activity_label": { "const": "SYNTHETIC_ACTIVITY_DISPLAY" },
+            "quantity_label": { "const": "SYNTHETIC_PER_ITEM_QUANTITY_DISPLAY" },
+            "trend_label": { "const": "SYNTHETIC_MONTHLY_TREND_DISPLAY" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "release_status": { "const": "released" } } },
+          "then": { "required": ["released_content"] },
+          "else": { "not": { "required": ["released_content"] } }
+        }
+      ]
+    },
+    "portfolioSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_status", "notice"],
+      "properties": {
+        "release_status": { "$ref": "#/definitions/releaseStatus" },
+        "notice": { "type": "string", "minLength": 1 },
+        "released_composition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["entries", "non_additive_notice"],
+          "properties": {
+            "entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["selection_id", "share_label"],
+                "properties": {
+                  "selection_id": { "type": "string", "pattern": "^synthetic:(group|item):[a-z-]+$" },
+                  "share_label": { "const": "SYNTHETIC_COMPOSITION_DISPLAY" }
+                }
+              }
+            },
+            "non_additive_notice": {
+              "const": "Per-item quantities and concentration indicators are not combined."
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "release_status": { "const": "released" } } },
+          "then": { "required": ["released_composition"] },
+          "else": { "not": { "required": ["released_composition"] } }
+        }
+      ]
+    },
+    "observedReach": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_status", "notice"],
+      "properties": {
+        "release_status": { "$ref": "#/definitions/releaseStatus" },
+        "notice": { "type": "string", "minLength": 1 },
+        "released_stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stage_label", "display_label"],
+            "properties": {
+              "stage_label": { "type": "string", "pattern": "^SYNTHETIC_STAGE_" },
+              "display_label": { "const": "SYNTHETIC_REACH_DISPLAY" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "release_status": { "const": "released" } } },
+          "then": { "required": ["released_stages"] },
+          "else": { "not": { "required": ["released_stages"] } }
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_status", "field_states"],
+      "properties": {
+        "release_status": { "$ref": "#/definitions/releaseStatus" },
+        "field_states": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "state", "notice"],
+            "properties": {
+              "field": {
+                "enum": [
+                  "reported_activity",
+                  "raw_supply_quantity",
+                  "supplier_recipient_counts",
+                  "industry_region_composition"
+                ]
+              },
+              "state": { "enum": ["available", "suppressed", "missing", "not_available"] },
+              "notice": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
