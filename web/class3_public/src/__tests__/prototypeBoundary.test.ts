@@ -35,4 +35,43 @@ describe("runtime dependency boundary", () => {
       }
     }
   });
+
+  it("does not load external stylesheets from CSS", () => {
+    for (const runtimePath of listRuntimeFiles(resolve(process.cwd(), "src"))) {
+      if (!runtimePath.endsWith(".css")) {
+        continue;
+      }
+      const source = readFileSync(runtimePath, "utf8");
+      expect(source, `${runtimePath} contains an external CSS import`).not.toMatch(
+        /@import\s+(?:url\()?['"]?https?:\/\//i,
+      );
+    }
+  });
+
+  it("keeps the approved package dependency set", () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+
+    expect(Object.keys(packageJson.dependencies).sort()).toEqual([
+      "react",
+      "react-dom",
+    ]);
+    expect(Object.keys(packageJson.devDependencies).sort()).toEqual([
+      "@testing-library/jest-dom",
+      "@testing-library/react",
+      "@types/node",
+      "@types/react",
+      "@types/react-dom",
+      "@vitejs/plugin-react",
+      "ajv",
+      "jsdom",
+      "typescript",
+      "vite",
+      "vitest",
+    ]);
+  });
 });

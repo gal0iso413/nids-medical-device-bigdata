@@ -1,6 +1,6 @@
 # Class 3 공개 웹 셸
 
-PR-C3-UI-01A의 mock 화면 계약과 라우팅 없는 정적 웹 셸이다. 이 디렉터리는 기존 Class 3 Streamlit·MCDM 코드 및 `prototype_meeting/innovation/class3.*`를 runtime dependency로 사용하지 않는다.
+PR-C3-UI-01A의 mock 화면 계약과 라우팅 없는 정적 웹 셸에 UI-01B의 시각 체계를 적용한 구현이다. 이 디렉터리는 기존 Class 3 Streamlit·MCDM 코드 및 `prototype_meeting/innovation/class3.*`를 runtime dependency로 사용하지 않는다.
 
 ## 기술 스택과 지원 환경
 
@@ -57,4 +57,12 @@ mock JSON Schema와 fixture는 개발 전용 화면 계약이다. 후속 product
 - 현재 production API는 연결되지 않았다. production build는 성공하지만 화면에는 `서비스 데이터 연결 전` unavailable 상태가 표시된다.
 - 가짜 `/api` endpoint나 production 서버 패키지를 제공하지 않는다.
 
-혁신 시안의 세부 디자인 이전은 PR-C3-UI-01B에서 수행한다. 실제 공개 API 연결은 PR-C3-04와 PR-C3-UI-02의 후속 범위다.
+## 시각 체계
+
+`src/design/tokens.css`는 `prototype_meeting/innovation` 시안에서 승인된 navy·blue·teal·amber·danger 색상 계열, canvas와 surface, 선, radius, shadow, 1180px 콘텐츠 폭 및 타이포그래피 스케일을 신규 웹 전용 `--c3-*` 변수로 옮긴다. 슬림한 서비스 바, editorial hero, 큰 검색 패널, 상태 notice, 서로 다른 밀도의 결과·포트폴리오·관측 도달·coverage 표면, skip link와 focus-visible 패턴도 시각 언어로 계승한다.
+
+기존 시안의 기업군 3단계 wizard, 단일 품목 흐름, 진단 문장, 기회지도, 성장×HHI 정보 구조는 가져오지 않는다. 기존 CSS·HTML·JS를 import하거나 정적 asset으로 연결하지 않으며, 현재 mock 계약과 섹션 순서를 유지한다.
+
+외부 Pretendard CDN `@import`는 배포 보안·가용성·개인정보 정책이 확정되지 않아 사용하지 않는다. 현재는 `"Pretendard GOV"`, Pretendard, `"Apple SD Gothic Neo"`, `"Malgun Gothic"`, system-ui, sans-serif의 로컬 fallback stack만 사용한다. 폰트 self-hosting은 배포 정책 확정 후 별도 작업이다.
+
+검색·기간·비교 상호작용은 PR-C3-UI-01C, Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. 실제 공개 API 연결은 PR-C3-04와 PR-C3-UI-02에서 수행한다.
