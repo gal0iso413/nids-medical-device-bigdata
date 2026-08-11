@@ -106,6 +106,8 @@ tests/fixtures/supply_monthly_small.*
 
 ### PR-C3-UI-01A — mock API 계약과 정적 웹 셸
 
+선행 조건: [Class 3 웹 기술 스택 결정](../decisions/class3-web-stack.md)의 Locked decision을 따른다. 최소 지원 Node.js와 npm 버전은 실제 UI-01A 생성 시 Vite 공식 지원 범위와 CI·배포 환경을 확인해 고정하며, 선행 문서 단계에서 임의로 추정하지 않는다.
+
 범위: 버전된 mock 응답 스키마, 정적 진입점, 라우팅 없는 화면 셸, fixture loader.
 
 제외: 실데이터, Parquet, 인증, 공개 정책 임계값, 기존 MCDM active route 격리, 런타임 mock fallback.
