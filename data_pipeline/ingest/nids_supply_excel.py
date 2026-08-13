@@ -86,6 +86,24 @@ CONSUMED_HEADERS: Final[frozenset[str]] = frozenset(
     alias for aliases in HEADER_ALIASES.values() for alias in aliases
 )
 PROFILE_EXPECTED_FIELDS: Final[frozenset[str]] = frozenset(HEADER_ALIASES)
+STRUCTURE_REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "supply_date",
+        "src_company_id",
+        "transaction_type",
+        "item_serial",
+        "model_serial",
+        "udi_serial",
+        "raw_supply_qty",
+        "client_code",
+        "base_month",
+        "work_serial",
+        "supply_serial",
+    }
+)
+RECEIVER_STRUCTURE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"dst_company_id", "hospital_id"}
+)
 TRANSACTION_TYPE_MAP: Final[dict[str, str]] = {
     "출고": "SUPPLY",
     "반품": "RETURN",
@@ -107,6 +125,10 @@ class NidsSupplyExcelError(RuntimeError):
 
 class DataSheetDiscoveryError(NidsSupplyExcelError):
     """Raised when content-based sheet/header discovery is not unambiguous."""
+
+
+class DataSheetSchemaError(DataSheetDiscoveryError):
+    """Raised before row streaming when required logical fields are absent."""
 
 
 class SourceSnapshotError(NidsSupplyExcelError):
@@ -198,6 +220,7 @@ class SupplyIngestionReport:
     high_value_review: IngestionIssue = field(default_factory=IngestionIssue)
     barcode_entry_error_suspected: IngestionIssue = field(default_factory=IngestionIssue)
     high_value_max: Decimal | None = None
+    rejected_by_reason: Counter[str] = field(default_factory=Counter)
 
     @property
     def rows_read(self) -> int:
@@ -206,6 +229,24 @@ class SupplyIngestionReport:
     @property
     def rows_emitted(self) -> int:
         return sum(profile.rows_emitted for profile in self.sheet_profiles)
+
+    @property
+    def rows_rejected(self) -> int:
+        return sum(self.rejected_by_reason.values())
+
+    @property
+    def accounting_is_complete(self) -> bool:
+        return (
+            self.rows_read == self.rows_emitted + self.rows_rejected
+            and self.rows_rejected == sum(self.rejected_by_reason.values())
+        )
+
+    def validate_accounting(self) -> None:
+        if not self.accounting_is_complete:
+            raise NidsSupplyExcelError(
+                "Ingestion accounting invariant failed: rows_read must equal "
+                "rows_emitted plus exclusive rows_rejected"
+            )
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -441,6 +482,22 @@ def _field_positions(headers: tuple[str, ...]) -> dict[str, int]:
     return positions
 
 
+def _validate_mapped_sheet_schema(
+    positions: dict[str, int],
+    *,
+    workbook_name: str,
+    sheet_name: str,
+) -> None:
+    missing = set(STRUCTURE_REQUIRED_FIELDS - set(positions))
+    if not RECEIVER_STRUCTURE_FIELDS.intersection(positions):
+        missing.add("dst_company_id|hospital_id")
+    if missing:
+        raise DataSheetSchemaError(
+            f"Workbook {workbook_name!r}, sheet {sheet_name!r} is missing "
+            f"required logical fields: {sorted(missing)}"
+        )
+
+
 def _raw_fields(row: tuple[Any, ...], positions: dict[str, int]) -> dict[str, Any]:
     return {
         name: row[position] if position < len(row) else None
@@ -450,6 +507,17 @@ def _raw_fields(row: tuple[Any, ...], positions: dict[str, int]) -> dict[str, An
 
 def _location(workbook: str, sheet: str, row_number: int) -> str:
     return f"{workbook}:{sheet}:row={row_number}"
+
+
+def _reject_row(
+    report: SupplyIngestionReport,
+    *,
+    reason: str,
+    issue: IngestionIssue,
+    diagnostic: str,
+) -> None:
+    report.rejected_by_reason[reason] += 1
+    issue.add(diagnostic)
 
 
 def _map_row(
@@ -507,26 +575,46 @@ def _map_row(
         report.barcode_entry_error_suspected.add(diagnostic)
 
     if source_row_id is None:
-        report.source_identity_incomplete.add(location)
+        _reject_row(
+            report,
+            reason="source_identity_incomplete",
+            issue=report.source_identity_incomplete,
+            diagnostic=location,
+        )
         return None
 
     src = _normalize_integer_code(raw.get("src_company_id"))
     dst_company = _normalize_integer_code(raw.get("dst_company_id"))
     hospital = _normalize_text(raw.get("hospital_id"))
     if src is None or (dst_company is None and hospital is None):
-        report.party_identity_incomplete.add(source_row_id)
+        _reject_row(
+            report,
+            reason="party_identity_incomplete",
+            issue=report.party_identity_incomplete,
+            diagnostic=source_row_id,
+        )
         return None
 
     item_serial = _normalize_integer_code(raw.get("item_serial"))
     model_serial = _normalize_integer_code(raw.get("model_serial"))
     udi_serial = _normalize_integer_code(raw.get("udi_serial"))
     if None in (item_serial, model_serial, udi_serial):
-        report.product_key_incomplete.add(source_row_id)
+        _reject_row(
+            report,
+            reason="product_key_incomplete",
+            issue=report.product_key_incomplete,
+            diagnostic=source_row_id,
+        )
         return None
 
     supply_date = _parse_supply_date(raw.get("supply_date"))
     if supply_date is None:
-        report.date_conversion_failed.add(source_row_id)
+        _reject_row(
+            report,
+            reason="date_invalid",
+            issue=report.date_conversion_failed,
+            diagnostic=source_row_id,
+        )
         return None
 
     flags: set[str] = set()
@@ -609,82 +697,129 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
         )
         self.report = SupplyIngestionReport()
         self._started = False
+        self._closed = False
+        self._active_generator: Iterator[pd.DataFrame] | None = None
+
+    def __enter__(self) -> SupplyExcelStream:
+        if self._closed:
+            raise RuntimeError("SupplyExcelStream is already closed")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: Any,
+    ) -> None:
+        del exc_type, exc_value, traceback
+        self.close()
 
     def __iter__(self) -> Iterator[pd.DataFrame]:
-        if self._started:
+        if self._started or self._closed:
             raise RuntimeError("SupplyExcelStream is one-pass; create a new stream to reread")
         self._started = True
-        return self._iter_batches()
+        generator = self._iter_batches()
+        self._active_generator = generator
+        return generator
+
+    def close(self) -> None:
+        """Close any active generator and its workbook; safe to call repeatedly."""
+        if self._closed:
+            return
+        self._closed = True
+        generator = self._active_generator
+        self._active_generator = None
+        if generator is not None:
+            generator.close()
 
     def _iter_batches(self) -> Iterator[pd.DataFrame]:
         batch: list[dict[str, Any]] = []
-        for path in self._ordered_paths:
-            workbook: Workbook | None = None
-            try:
-                workbook = load_workbook(path, read_only=True, data_only=True)
-                sheets = _discover_open_workbook(
-                    workbook, header_scan_limit=self.header_scan_limit
-                )
-                for discovered in sheets:
-                    positions = _field_positions(discovered.headers)
-                    mapped_headers = {
-                        discovered.headers[position] for position in positions.values()
-                    }
-                    missing_fields = tuple(
-                        sorted(
-                            HEADER_ALIASES[field_name][0]
-                            for field_name in PROFILE_EXPECTED_FIELDS - set(positions)
-                        )
+        completed = False
+        try:
+            for path in self._ordered_paths:
+                workbook: Workbook | None = None
+                try:
+                    workbook = load_workbook(path, read_only=True, data_only=True)
+                    sheets = _discover_open_workbook(
+                        workbook, header_scan_limit=self.header_scan_limit
                     )
-                    profile = SheetIngestionProfile(
-                        workbook=path.name,
-                        sheet=discovered.name,
-                        missing_columns=missing_fields,
-                        extra_columns=tuple(
+                    for discovered in sheets:
+                        positions = _field_positions(discovered.headers)
+                        _validate_mapped_sheet_schema(
+                            positions,
+                            workbook_name=path.name,
+                            sheet_name=discovered.name,
+                        )
+                        mapped_headers = {
+                            discovered.headers[position]
+                            for position in positions.values()
+                        }
+                        missing_fields = tuple(
                             sorted(
-                                header
-                                for header in discovered.headers
-                                if header and header not in mapped_headers
+                                HEADER_ALIASES[field_name][0]
+                                for field_name in PROFILE_EXPECTED_FIELDS
+                                - set(positions)
                             )
-                        ),
-                    )
-                    self.report.sheet_profiles.append(profile)
-                    sheet = workbook[discovered.name]
-                    for row_number, row in enumerate(
-                        sheet.iter_rows(
-                            min_row=discovered.header_row + 1,
-                            values_only=True,
-                        ),
-                        start=discovered.header_row + 1,
-                    ):
-                        if not any(value is not None for value in row):
-                            continue
-                        profile.rows_read += 1
-                        raw = _raw_fields(row, positions)
-                        mapped = _map_row(
-                            raw,
-                            source_version=self.lineage.source_version,
-                            location=_location(path.name, discovered.name, row_number),
-                            report=self.report,
                         )
-                        if mapped is None:
-                            continue
-                        profile.rows_emitted += 1
-                        batch.append(mapped)
-                        if len(batch) == self.batch_size:
-                            yield pd.DataFrame(batch, columns=SOURCE_BATCH_COLUMNS)
-                            batch = []
-            except (DataSheetDiscoveryError, NidsSupplyExcelError):
-                raise
-            except Exception as exc:
-                raise NidsSupplyExcelError(
-                    f"Could not stream source workbook {path.name!r}"
-                ) from exc
-            finally:
-                if workbook is not None:
-                    workbook.close()
-        if batch:
-            yield pd.DataFrame(batch, columns=SOURCE_BATCH_COLUMNS)
+                        profile = SheetIngestionProfile(
+                            workbook=path.name,
+                            sheet=discovered.name,
+                            missing_columns=missing_fields,
+                            extra_columns=tuple(
+                                sorted(
+                                    header
+                                    for header in discovered.headers
+                                    if header and header not in mapped_headers
+                                )
+                            ),
+                        )
+                        self.report.sheet_profiles.append(profile)
+                        sheet = workbook[discovered.name]
+                        for row_number, row in enumerate(
+                            sheet.iter_rows(
+                                min_row=discovered.header_row + 1,
+                                values_only=True,
+                            ),
+                            start=discovered.header_row + 1,
+                        ):
+                            if not any(value is not None for value in row):
+                                continue
+                            profile.rows_read += 1
+                            raw = _raw_fields(row, positions)
+                            mapped = _map_row(
+                                raw,
+                                source_version=self.lineage.source_version,
+                                location=_location(
+                                    path.name, discovered.name, row_number
+                                ),
+                                report=self.report,
+                            )
+                            if mapped is None:
+                                continue
+                            profile.rows_emitted += 1
+                            batch.append(mapped)
+                            if len(batch) == self.batch_size:
+                                yield pd.DataFrame(
+                                    batch, columns=SOURCE_BATCH_COLUMNS
+                                )
+                                batch = []
+                except (DataSheetDiscoveryError, NidsSupplyExcelError):
+                    raise
+                except Exception as exc:
+                    raise NidsSupplyExcelError(
+                        f"Could not stream source workbook {path.name!r}"
+                    ) from exc
+                finally:
+                    if workbook is not None:
+                        workbook.close()
+            if batch:
+                yield pd.DataFrame(batch, columns=SOURCE_BATCH_COLUMNS)
+            completed = True
+        finally:
+            self._active_generator = None
+            self._closed = True
+            if completed:
+                self.report.validate_accounting()
 
 
 def stream_nids_supply_excel(

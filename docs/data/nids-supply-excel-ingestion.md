@@ -20,7 +20,17 @@ discover_supply_sheets(workbook_path, header_scan_limit=12) -> tuple[DiscoveredS
 stream_nids_supply_excel(workbook_paths, batch_size=10_000, header_scan_limit=12) -> SupplyExcelStream
 ```
 
-`SupplyExcelStream`은 한 번만 순회할 수 있다. `lineage`는 순회 전에도 사용할 수 있고 `report`는 순회하면서 누적된다. workbook은 정상·오류·generator 종료 경로에서 닫힌다. adapter는 batch를 반환할 뿐 전체 결과를 내부에 누적하지 않는다.
+`SupplyExcelStream`은 한 번만 순회할 수 있고 `close()`를 여러 번 호출해도 안전하다. `lineage`는 순회 전에도 사용할 수 있고 `report`는 순회하면서 누적된다. workbook은 정상·오류·generator 종료 경로에서 닫힌다. adapter는 batch를 반환할 뿐 전체 결과를 내부에 누적하지 않는다. 조기 종료가 가능한 호출자는 context manager를 사용한다.
+
+```python
+with stream_nids_supply_excel(paths) as stream:
+    for batch in stream:
+        consume(batch)
+        if condition:
+            break
+```
+
+context 종료는 활성 generator를 즉시 닫아 workbook의 `finally`를 실행한다. 닫힌 stream 또는 한 번 완료된 stream은 다시 순회할 수 없다.
 
 ## Content-based sheet discovery
 
@@ -32,6 +42,8 @@ sheet 이름과 위치는 계약이 아니다. 각 sheet의 처음 최대 12행�
 - 같은 헤더 행의 중복 열 이름
 - 제한 범위에 둘 이상의 후보 헤더 행
 - 하나의 논리 필드에 복수 alias가 동시에 존재
+
+data sheet 발견 직후 실제 행 순회 전에는 필수 논리 구조를 별도로 검증한다. `supply_date`, `src_company_id`, `transaction_type`, 공식 3-key, `raw_supply_qty`, 공식 행 식별 4개 필드가 모두 있어야 한다. 수령자는 `dst_company_id` 또는 `hospital_id` 원본 열 중 하나 이상이 있어야 한다. 누락 시 workbook 논리명, sheet명과 누락 논리 필드만 포함한 `DataSheetSchemaError`로 조기 차단한다. 금액·포장/낱개수량과 선택 dimension은 열 결측을 profile에 기록하되 streaming을 허용한다.
 
 헤더 탐색 상한을 초과해 전체 sheet를 탐색하지 않는다. 필수 매핑 열 결측과 소비하지 않는 추가 열은 workbook/sheet profile에 기록한다.
 
@@ -90,6 +102,13 @@ sheet 이름과 위치는 계약이 아니다. 각 sheet의 처음 최대 12행�
 - 원본 복합키 존재·결측
 
 각 issue는 전체 건수와 최대 20개 위치 또는 `source_row_id`, 나머지 omitted 건수만 보유한다. 회사명, 사업자등록번호, 전체 원시 행은 진단에 포함하지 않는다.
+
+배제 행은 첫 번째로 확정된 사유 하나만 `rejected_by_reason`에 기록한다. 순서는 source identity → 공급자/수령자 identity → 3-key → 날짜 검증이다. Decimal 결측·극단값·낱개수량 불일치는 행을 배제하지 않으므로 exclusive reject 집계에 들어가지 않는다. 전체 순회 완료 시 report는 다음 불변식을 검증한다.
+
+```text
+rows_read == rows_emitted + rows_rejected
+rows_rejected == sum(rejected_by_reason.values())
+```
 
 ## PR-03B 연결점
 

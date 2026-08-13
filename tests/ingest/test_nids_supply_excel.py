@@ -15,6 +15,7 @@ from data_pipeline.contracts import SOURCE_REQUIRED_COLUMNS, normalize_source_ro
 from data_pipeline.ingest import nids_supply_excel as adapter
 from data_pipeline.ingest.nids_supply_excel import (
     DataSheetDiscoveryError,
+    DataSheetSchemaError,
     NidsSupplyExcelError,
     SOURCE_BATCH_COLUMNS,
     create_source_lineage,
@@ -87,6 +88,11 @@ def row(**overrides: object) -> list[object]:
     return [values.get(header) for header in HEADERS]
 
 
+def row_for_headers(headers: list[str], **overrides: object) -> list[object]:
+    values = dict(zip(HEADERS, row(**overrides)))
+    return [values.get(header) for header in headers]
+
+
 def write_workbook(
     path: Path,
     *,
@@ -111,6 +117,23 @@ def data_rows(path: Path, *, batch_size: int = 100) -> tuple[pd.DataFrame, objec
         else pd.DataFrame(columns=SOURCE_BATCH_COLUMNS)
     )
     return frame, stream.report
+
+
+class TrackingWorkbook:
+    def __init__(self, workbook: object) -> None:
+        self.workbook = workbook
+        self.close_calls = 0
+
+    @property
+    def sheetnames(self) -> list[str]:
+        return self.workbook.sheetnames
+
+    def __getitem__(self, name: str) -> object:
+        return self.workbook[name]
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self.workbook.close()
 
 
 class NidsSupplyExcelAdapterTests(unittest.TestCase):
@@ -190,6 +213,110 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         write_workbook(path, sheets=[("data", [duplicate_headers])])
         with self.assertRaisesRegex(DataSheetDiscoveryError, "Duplicate"):
             discover_supply_sheets(path)
+
+    def test_missing_required_mapped_fields_fail_before_row_mapping(self) -> None:
+        for missing_header, logical_field in (
+            ("모델일련번호", "model_serial"),
+            ("UDI-DI 일련번호", "udi_serial"),
+        ):
+            with self.subTest(logical_field=logical_field):
+                headers = [header for header in HEADERS if header != missing_header]
+                path = self.temp_dir / f"missing-{logical_field}.xlsx"
+                write_workbook(
+                    path,
+                    sheets=[("synthetic-data", [headers, row_for_headers(headers)])],
+                )
+                stream = stream_nids_supply_excel([path])
+                with patch.object(adapter, "_map_row") as mapped:
+                    with self.assertRaisesRegex(
+                        DataSheetSchemaError, logical_field
+                    ) as raised:
+                        list(stream)
+                mapped.assert_not_called()
+                message = str(raised.exception)
+                self.assertIn(path.name, message)
+                self.assertIn("synthetic-data", message)
+                self.assertNotIn("SYNTHETIC-ITEM", message)
+
+    def test_both_receiver_columns_missing_fail_before_row_mapping(self) -> None:
+        headers = [
+            header
+            for header in HEADERS
+            if header
+            not in {"공급받은자 업체일련번호", "요양기관기호(의료기관)"}
+        ]
+        path = self.temp_dir / "missing-receiver-columns.xlsx"
+        write_workbook(
+            path,
+            sheets=[("data", [headers, row_for_headers(headers)])],
+        )
+        stream = stream_nids_supply_excel([path])
+
+        with patch.object(adapter, "_map_row") as mapped:
+            with self.assertRaisesRegex(
+                DataSheetSchemaError, r"dst_company_id\|hospital_id"
+            ):
+                list(stream)
+        mapped.assert_not_called()
+
+    def test_hospital_column_alone_satisfies_receiver_structure(self) -> None:
+        headers = [
+            header for header in HEADERS if header != "공급받은자 업체일련번호"
+        ]
+        path = self.temp_dir / "hospital-only.xlsx"
+        write_workbook(
+            path,
+            sheets=[
+                (
+                    "data",
+                    [
+                        headers,
+                        row_for_headers(
+                            headers,
+                            **{"요양기관기호(의료기관)": "001234"},
+                        ),
+                    ],
+                )
+            ],
+        )
+
+        actual, report = data_rows(path)
+
+        self.assertEqual(len(actual), 1)
+        self.assertEqual(actual.loc[0, "dst_company_id"], "hosp:001234")
+        self.assertIn(
+            "공급받은자 업체일련번호",
+            report.sheet_profiles[0].missing_columns,
+        )
+
+    def test_optional_columns_missing_are_profiled_but_streaming_continues(self) -> None:
+        optional_headers = {
+            "공급금액",
+            "포장내 총 수량",
+            "낱개총수량",
+            "품목군",
+            "품목명",
+            "UDI-DI",
+            "업종",
+            "공급받은자업종",
+            "공급한자의 소재지 시도코드",
+            "공급받은자의 소재지 시도코드",
+            "공급내역보고자료복합Key",
+        }
+        headers = [header for header in HEADERS if header not in optional_headers]
+        path = self.temp_dir / "optional-missing.xlsx"
+        write_workbook(
+            path,
+            sheets=[("data", [headers, row_for_headers(headers)])],
+        )
+
+        actual, report = data_rows(path)
+
+        self.assertEqual(len(actual), 1)
+        missing = set(report.sheet_profiles[0].missing_columns)
+        self.assertTrue(optional_headers.issubset(missing))
+        self.assertTrue(pd.isna(actual.loc[0, "amount_clean"]))
+        self.assertTrue(pd.isna(actual.loc[0, "piece_qty"]))
 
     def test_batch_size_is_a_hard_upper_bound(self) -> None:
         path = self.temp_dir / "batches.xlsx"
@@ -281,6 +408,118 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         self.assertEqual(len(issue.sample), 20)
         self.assertEqual(issue.omitted, 5)
         self.assertTrue(all("row=" in sample for sample in issue.sample))
+        self.assertEqual(report.rows_read, 25)
+        self.assertEqual(report.rows_emitted, 0)
+        self.assertEqual(report.rows_rejected, 25)
+        self.assertEqual(
+            report.rejected_by_reason,
+            {"source_identity_incomplete": 25},
+        )
+        self.assertTrue(report.accounting_is_complete)
+
+    def test_exclusive_rejection_accounting_across_multiple_sheets(self) -> None:
+        path = self.temp_dir / "accounting.xlsx"
+        write_workbook(
+            path,
+            sheets=[
+                (
+                    "alpha",
+                    [
+                        HEADERS,
+                        row(),
+                        row(
+                            **{
+                                "공급내역일련번호": None,
+                                "공급한자 업체일련번호": None,
+                                "모델일련번호": None,
+                                "공급일자": "invalid",
+                            }
+                        ),
+                        row(
+                            **{
+                                "공급내역일련번호": "301",
+                                "공급한자 업체일련번호": None,
+                            }
+                        ),
+                    ],
+                ),
+                (
+                    "beta",
+                    [
+                        HEADERS,
+                        row(
+                            **{
+                                "공급내역일련번호": "302",
+                                "모델일련번호": None,
+                            }
+                        ),
+                        row(
+                            **{
+                                "공급내역일련번호": "303",
+                                "공급일자": "invalid",
+                            }
+                        ),
+                        row(**{"공급내역일련번호": "304"}),
+                    ],
+                ),
+            ],
+        )
+
+        actual, report = data_rows(path, batch_size=2)
+
+        self.assertEqual(len(actual), 2)
+        self.assertEqual(report.rows_read, 6)
+        self.assertEqual(report.rows_emitted, 2)
+        self.assertEqual(report.rows_rejected, 4)
+        self.assertEqual(
+            report.rejected_by_reason,
+            {
+                "source_identity_incomplete": 1,
+                "party_identity_incomplete": 1,
+                "product_key_incomplete": 1,
+                "date_invalid": 1,
+            },
+        )
+        self.assertEqual(
+            report.rows_read,
+            report.rows_emitted + report.rows_rejected,
+        )
+        self.assertEqual(
+            report.rows_rejected,
+            sum(report.rejected_by_reason.values()),
+        )
+        self.assertTrue(report.accounting_is_complete)
+        report.validate_accounting()
+
+    def test_rejection_report_memory_is_bounded_by_reason_and_sample_limit(self) -> None:
+        path = self.temp_dir / "bounded-rejections.xlsx"
+        write_workbook(
+            path,
+            sheets=[
+                (
+                    "data",
+                    [HEADERS]
+                    + [
+                        row(
+                            **{
+                                "공급내역작업일련번호": str(index),
+                                "공급내역일련번호": None,
+                            }
+                        )
+                        for index in range(1_000)
+                    ],
+                )
+            ],
+        )
+
+        actual, report = data_rows(path)
+
+        self.assertTrue(actual.empty)
+        self.assertEqual(report.rows_rejected, 1_000)
+        self.assertEqual(len(report.rejected_by_reason), 1)
+        self.assertEqual(len(report.source_identity_incomplete.sample), 20)
+        self.assertEqual(report.source_identity_incomplete.omitted, 980)
+        self.assertTrue(report.accounting_is_complete)
 
     def test_reported_composite_key_is_quality_only_and_never_an_id_fallback(self) -> None:
         path = self.temp_dir / "composite.xlsx"
@@ -500,33 +739,95 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         self.assertEqual(report.barcode_entry_error_suspected.total, 1)
         self.assertEqual(report.high_value_max, Decimal("1000000000001"))
 
+    def test_context_exit_after_first_batch_closes_active_workbook(self) -> None:
+        path = self.temp_dir / "early-exit.xlsx"
+        write_workbook(
+            path,
+            sheets=[
+                (
+                    "data",
+                    [
+                        HEADERS,
+                        row(),
+                        row(**{"공급내역일련번호": "301"}),
+                    ],
+                )
+            ],
+        )
+        stream = stream_nids_supply_excel([path], batch_size=1)
+        proxy = TrackingWorkbook(
+            adapter.load_workbook(path, read_only=True, data_only=True)
+        )
+
+        with patch.object(adapter, "load_workbook", return_value=proxy):
+            with stream:
+                for batch in stream:
+                    self.assertEqual(len(batch), 1)
+                    break
+
+        self.assertEqual(proxy.close_calls, 1)
+        with self.assertRaises(RuntimeError):
+            iter(stream)
+
+    def test_streaming_exception_closes_workbook(self) -> None:
+        path = self.workbook("stream-error.xlsx")
+        stream = stream_nids_supply_excel([path])
+        proxy = TrackingWorkbook(
+            adapter.load_workbook(path, read_only=True, data_only=True)
+        )
+
+        with (
+            patch.object(adapter, "load_workbook", return_value=proxy),
+            patch.object(adapter, "_map_row", side_effect=RuntimeError("synthetic")),
+        ):
+            with self.assertRaises(NidsSupplyExcelError):
+                list(stream)
+
+        self.assertEqual(proxy.close_calls, 1)
+
+    def test_full_stream_closes_workbook_and_remains_one_pass(self) -> None:
+        path = self.workbook("full-close.xlsx")
+        stream = stream_nids_supply_excel([path])
+        proxy = TrackingWorkbook(
+            adapter.load_workbook(path, read_only=True, data_only=True)
+        )
+
+        with patch.object(adapter, "load_workbook", return_value=proxy):
+            batches = list(stream)
+
+        self.assertEqual(sum(len(batch) for batch in batches), 1)
+        self.assertEqual(proxy.close_calls, 1)
+        with self.assertRaises(RuntimeError):
+            list(stream)
+
+    def test_close_is_idempotent_while_generator_is_active(self) -> None:
+        path = self.workbook("double-close.xlsx")
+        stream = stream_nids_supply_excel([path], batch_size=1)
+        proxy = TrackingWorkbook(
+            adapter.load_workbook(path, read_only=True, data_only=True)
+        )
+
+        with patch.object(adapter, "load_workbook", return_value=proxy):
+            iterator = iter(stream)
+            self.assertEqual(len(next(iterator)), 1)
+            stream.close()
+            stream.close()
+
+        self.assertEqual(proxy.close_calls, 1)
+        with self.assertRaises(RuntimeError):
+            iter(stream)
+
     def test_workbook_is_closed_when_discovery_fails(self) -> None:
         path = self.temp_dir / "close.xlsx"
         write_workbook(path, sheets=[("metadata", [["nothing"]])])
         real = adapter.load_workbook(path, read_only=True, data_only=True)
 
-        class WorkbookProxy:
-            def __init__(self, workbook: object) -> None:
-                self.workbook = workbook
-                self.closed = False
-
-            @property
-            def sheetnames(self) -> list[str]:
-                return self.workbook.sheetnames
-
-            def __getitem__(self, name: str) -> object:
-                return self.workbook[name]
-
-            def close(self) -> None:
-                self.closed = True
-                self.workbook.close()
-
-        proxy = WorkbookProxy(real)
+        proxy = TrackingWorkbook(real)
         with patch.object(adapter, "load_workbook", return_value=proxy) as mocked_load:
             with self.assertRaises(DataSheetDiscoveryError):
                 discover_supply_sheets(path)
         mocked_load.assert_called_once_with(path, read_only=True, data_only=True)
-        self.assertTrue(proxy.closed)
+        self.assertEqual(proxy.close_calls, 1)
 
     def test_output_columns_match_pr01_source_contract_exactly(self) -> None:
         actual, report = data_rows(self.workbook())

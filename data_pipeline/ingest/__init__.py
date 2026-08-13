@@ -3,6 +3,7 @@
 from .nids_supply_excel import (
     ADAPTER_CONTRACT_VERSION,
     DataSheetDiscoveryError,
+    DataSheetSchemaError,
     DiscoveredSheet,
     IngestionIssue,
     NidsSupplyExcelError,
@@ -21,6 +22,7 @@ from .nids_supply_excel import (
 __all__ = [
     "ADAPTER_CONTRACT_VERSION",
     "DataSheetDiscoveryError",
+    "DataSheetSchemaError",
     "DiscoveredSheet",
     "IngestionIssue",
     "NidsSupplyExcelError",
