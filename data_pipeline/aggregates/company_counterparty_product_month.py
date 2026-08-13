@@ -67,6 +67,17 @@ def _raise_for_negative_forward_values(rows: pd.DataFrame) -> None:
             )
 
 
+def validate_forward_supply_rows(rows: pd.DataFrame) -> None:
+    """Apply the shared PR-01 transaction-type and sign policy.
+
+    Callers must pass normalized source rows.  The helper deliberately does
+    not filter unsupported records: one unsupported record blocks the entire
+    bounded batch.
+    """
+    _raise_for_transaction_types(rows["transaction_type"])
+    _raise_for_negative_forward_values(rows)
+
+
 def _merge_source_quality_flags(series: pd.Series) -> str:
     flags: set[str] = set()
     for value in series.dropna().astype(str):
@@ -115,8 +126,7 @@ def aggregate_company_counterparty_product_month(rows: pd.DataFrame) -> pd.DataF
         )
     source_version = source_versions[0]
 
-    _raise_for_transaction_types(normalized["transaction_type"])
-    _raise_for_negative_forward_values(normalized)
+    validate_forward_supply_rows(normalized)
 
     normalized = assign_product_ids(normalized)
     normalized["month"] = normalized["supply_date"].dt.strftime("%Y%m")
