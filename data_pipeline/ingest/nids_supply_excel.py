@@ -13,7 +13,6 @@ from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from itertools import islice
 import json
-import math
 from pathlib import Path
 import re
 from typing import Any, Final, Iterable, Iterator, Sequence
@@ -26,6 +25,7 @@ from data_pipeline.contracts.supply_monthly import (
     BLOCK_DEDUPLICATION_UNVERIFIED,
     SOURCE_REQUIRED_COLUMNS,
 )
+from data_pipeline.contracts.product_key import normalize_integer_code
 
 
 ADAPTER_CONTRACT_VERSION: Final = "1.0.0"
@@ -113,7 +113,6 @@ TRANSACTION_TYPE_MAP: Final[dict[str, str]] = {
 }
 HIGH_VALUE_THRESHOLD: Final = Decimal("50000000")
 BARCODE_SUSPECT_THRESHOLD: Final = Decimal("1e12")
-_INTEGER_CODE_PATTERN: Final = re.compile(r"^[+-]?\d+(?:\.0+)?$")
 _DECIMAL_PATTERN: Final = re.compile(
     r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$"
 )
@@ -390,29 +389,6 @@ def _is_missing(value: Any) -> bool:
     return False
 
 
-def _normalize_integer_code(value: Any) -> str | None:
-    if _is_missing(value) or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, Decimal):
-        if not value.is_finite() or value != value.to_integral_value():
-            return None
-        return str(int(value))
-    if isinstance(value, float):
-        if not math.isfinite(value) or abs(value) > 2**53 or not value.is_integer():
-            return None
-        return str(int(value))
-    text = str(value).strip()
-    if not _INTEGER_CODE_PATTERN.fullmatch(text):
-        return None
-    try:
-        parsed = Decimal(text)
-    except InvalidOperation:
-        return None
-    return str(int(parsed)) if parsed == parsed.to_integral_value() else None
-
-
 def _normalize_text(value: Any) -> str | None:
     if _is_missing(value):
         return None
@@ -459,10 +435,10 @@ def _parse_supply_date(value: Any) -> pd.Timestamp | None:
 
 def _source_row_id(raw: dict[str, Any]) -> str | None:
     components = {
-        "client_code": _normalize_integer_code(raw.get("client_code")),
-        "base_month": _normalize_integer_code(raw.get("base_month")),
-        "work_serial": _normalize_integer_code(raw.get("work_serial")),
-        "supply_serial": _normalize_integer_code(raw.get("supply_serial")),
+        "client_code": normalize_integer_code(raw.get("client_code")),
+        "base_month": normalize_integer_code(raw.get("base_month")),
+        "work_serial": normalize_integer_code(raw.get("work_serial")),
+        "supply_serial": normalize_integer_code(raw.get("supply_serial")),
     }
     if any(value is None for value in components.values()):
         return None
@@ -583,8 +559,8 @@ def _map_row(
         )
         return None
 
-    src = _normalize_integer_code(raw.get("src_company_id"))
-    dst_company = _normalize_integer_code(raw.get("dst_company_id"))
+    src = normalize_integer_code(raw.get("src_company_id"))
+    dst_company = normalize_integer_code(raw.get("dst_company_id"))
     hospital = _normalize_text(raw.get("hospital_id"))
     if src is None or (dst_company is None and hospital is None):
         _reject_row(
@@ -595,9 +571,9 @@ def _map_row(
         )
         return None
 
-    item_serial = _normalize_integer_code(raw.get("item_serial"))
-    model_serial = _normalize_integer_code(raw.get("model_serial"))
-    udi_serial = _normalize_integer_code(raw.get("udi_serial"))
+    item_serial = normalize_integer_code(raw.get("item_serial"))
+    model_serial = normalize_integer_code(raw.get("model_serial"))
+    udi_serial = normalize_integer_code(raw.get("udi_serial"))
     if None in (item_serial, model_serial, udi_serial):
         _reject_row(
             report,

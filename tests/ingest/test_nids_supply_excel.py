@@ -385,6 +385,10 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         first_rows, _ = data_rows(first)
         second_rows, _ = data_rows(second)
         self.assertEqual(first_rows.loc[0, "source_row_id"], second_rows.loc[0, "source_row_id"])
+        self.assertEqual(
+            first_rows.loc[0, "source_row_id"],
+            "nids-row-v1:e944f43a81c2c89d0a070a399eab062be34514072a894c21a1553d7abe0ce43b",
+        )
 
     def test_incomplete_source_identity_is_blocked_with_bounded_report(self) -> None:
         path = self.temp_dir / "blocked.xlsx"

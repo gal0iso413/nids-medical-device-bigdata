@@ -19,6 +19,12 @@ class_*/output/
 **/schema_version=*/.month=*.tmp-*/
 .monthly-fact-storage-test-*/
 
+# Immutable master product lookup outputs (source/tests/docs remain tracked)
+**/master_product_lookup/**/*.sqlite
+**/master_product_lookup/**/_manifest.json
+**/master_product_lookup/.lookup.tmp-*/
+.master-lookup-*/
+
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
 !class_*/research/.gitkeep
