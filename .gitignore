@@ -13,6 +13,12 @@ shared_data/*.xlsx
 class_*/output/
 *.zip
 
+# Offline monthly fact storage outputs (source/tests/docs remain tracked)
+**/fact_company_counterparty_product_month/**/*.parquet
+**/fact_company_counterparty_product_month/**/_manifest.json
+**/schema_version=*/.month=*.tmp-*/
+.monthly-fact-storage-test-*/
+
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
 !class_*/research/.gitkeep
