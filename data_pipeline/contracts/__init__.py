@@ -1,5 +1,7 @@
 """Versioned contracts shared by the Class 1 and Class 3 pipelines."""
 
+from .product_key import MAX_EXACT_FLOAT_INTEGER, normalize_integer_code
+
 from .supply_monthly import (
     BLOCK_DEDUPLICATION_UNVERIFIED,
     BLOCK_NEGATIVE_FORWARD_VALUE,
@@ -35,9 +37,11 @@ __all__ = [
     "PRODUCT_KEY_FIELD_TYPES",
     "SOURCE_REQUIRED_COLUMNS",
     "ContractValidationError",
+    "MAX_EXACT_FLOAT_INTEGER",
     "assign_product_ids",
     "build_product_id",
     "empty_monthly_fact",
     "normalize_source_rows",
+    "normalize_integer_code",
     "validate_monthly_fact",
 ]
