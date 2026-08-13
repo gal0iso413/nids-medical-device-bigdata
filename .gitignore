@@ -25,6 +25,13 @@ class_*/output/
 **/master_product_lookup/.lookup.tmp-*/
 .master-lookup-*/
 
+# Restartable monthly reducer checkpoints (source/tests/docs remain tracked)
+**/supply_monthly_orchestration/**/*.sqlite
+**/supply_monthly_orchestration/**/*.sqlite-wal
+**/supply_monthly_orchestration/**/*.sqlite-shm
+**/supply_monthly_orchestration/**/._*.tmp-*
+.supply-checkpoint-*/
+
 # Hermes role deliverables (local / ephemeral; not versioned)
 class_*/research/*
 !class_*/research/.gitkeep
