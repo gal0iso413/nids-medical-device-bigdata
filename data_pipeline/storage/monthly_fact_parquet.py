@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 import re
 import secrets
 import shutil
+from stat import S_ISDIR
 from typing import Any, Final, Iterable, Sequence
 
 import pandas as pd
@@ -228,6 +229,24 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _parquet_file_size(path: Path, month: str, *, operation: str) -> int:
+    try:
+        return path.stat().st_size
+    except OSError as exc:
+        raise MonthlyFactStorageError(
+            f"Could not stat Parquet file for partition {month} during {operation}"
+        ) from exc
+
+
+def _parquet_sha256(path: Path, month: str, *, operation: str) -> str:
+    try:
+        return _sha256_file(path)
+    except OSError as exc:
+        raise MonthlyFactStorageError(
+            f"Could not checksum Parquet file for partition {month} during {operation}"
+        ) from exc
+
+
 def _decimal_fits(value: Decimal) -> bool:
     if not value.is_finite():
         return False
@@ -292,8 +311,12 @@ def _manifest_for(month: str, fact: pd.DataFrame, parquet_path: Path) -> dict[st
         "logical_schema_fingerprint": LOGICAL_SCHEMA_FINGERPRINT,
         "logical_schema_name": FACT_SCHEMA_NAME,
         "logical_schema_version": FACT_SCHEMA_VERSION,
-        "parquet_file_size": parquet_path.stat().st_size,
-        "parquet_sha256": _sha256_file(parquet_path),
+        "parquet_file_size": _parquet_file_size(
+            parquet_path, month, operation="manifest creation"
+        ),
+        "parquet_sha256": _parquet_sha256(
+            parquet_path, month, operation="manifest creation"
+        ),
         "partition_column": PARTITION_COLUMN,
         "partition_value": month,
         "relative_parquet_path": _relative_parquet_path(month),
@@ -313,7 +336,12 @@ def _write_candidate(month_fact: pd.DataFrame, month: str, temp_dir: Path) -> di
             f"Could not write temporary Parquet data for partition {month}"
         ) from exc
     manifest = _manifest_for(month, month_fact, parquet_path)
-    manifest_path.write_bytes(_canonical_json_bytes(manifest))
+    try:
+        manifest_path.write_bytes(_canonical_json_bytes(manifest))
+    except OSError as exc:
+        raise MonthlyFactStorageError(
+            f"Could not write canonical manifest for partition {month}"
+        ) from exc
     return manifest
 
 
@@ -468,12 +496,16 @@ def verify_monthly_fact_partition(
         raise PartitionIntegrityError(
             f"Partition {normalized_month} physical compression is not {COMPRESSION}"
         )
-    actual_size = parquet_path.stat().st_size
+    actual_size = _parquet_file_size(
+        parquet_path, normalized_month, operation="partition verification"
+    )
     if actual_size != manifest["parquet_file_size"]:
         raise PartitionIntegrityError(
             f"Partition {normalized_month} file size does not match the manifest"
         )
-    actual_sha = _sha256_file(parquet_path)
+    actual_sha = _parquet_sha256(
+        parquet_path, normalized_month, operation="partition verification"
+    )
     if actual_sha != manifest["parquet_sha256"]:
         raise PartitionIntegrityError(
             f"Partition {normalized_month} SHA-256 does not match the manifest"
@@ -485,6 +517,69 @@ def verify_monthly_fact_partition(
         parquet_sha256=actual_sha,
         parquet_file_size=actual_size,
     )
+
+
+def _partition_matches_candidate(
+    candidate_manifest: dict[str, Any],
+    verification: PartitionVerification,
+) -> bool:
+    return (
+        candidate_manifest["parquet_sha256"] == verification.parquet_sha256
+        and candidate_manifest["parquet_file_size"]
+        == verification.parquet_file_size
+        and candidate_manifest["row_count"] == verification.row_count
+    )
+
+
+def _publish_candidate_partition(
+    *,
+    temp_dir: Path,
+    final_dir: Path,
+    output_root: Path,
+    month: str,
+    candidate_manifest: dict[str, Any],
+) -> bool:
+    """Atomically publish one month, resolving a competing publisher safely.
+
+    Return ``True`` when this process published the candidate and ``False``
+    when another process published identical content first.
+    """
+    try:
+        temp_dir.replace(final_dir)
+    except OSError as publish_exc:
+        try:
+            final_mode = final_dir.stat().st_mode
+        except FileNotFoundError:
+            raise MonthlyFactStorageError(
+                f"Could not publish final partition {month}; no competing "
+                "partition is available for verification"
+            ) from publish_exc
+        except OSError as inspect_exc:
+            raise MonthlyFactStorageError(
+                f"Could not inspect final partition {month} after publish failure"
+            ) from inspect_exc
+
+        if not S_ISDIR(final_mode):
+            raise PartitionIntegrityError(
+                f"Partition path for {month} is not a directory"
+            ) from publish_exc
+
+        try:
+            raced = verify_monthly_fact_partition(output_root, month)
+        except PartitionIntegrityError:
+            raise
+        except MonthlyFactStorageError as verify_exc:
+            raise MonthlyFactStorageError(
+                f"Could not verify competing final partition {month} after "
+                "publish failure"
+            ) from verify_exc
+
+        if _partition_matches_candidate(candidate_manifest, raced):
+            return False
+        raise PartitionConflictError(
+            f"Partition {month} appeared with different content"
+        ) from publish_exc
+    return True
 
 
 def write_monthly_fact_partitions(
@@ -524,13 +619,8 @@ def write_monthly_fact_partitions(
         try:
             candidate_manifest = _write_candidate(month_fact, normalized_month, temp_dir)
             if existing_verification is not None:
-                if (
-                    candidate_manifest["parquet_sha256"]
-                    == existing_verification.parquet_sha256
-                    and candidate_manifest["parquet_file_size"]
-                    == existing_verification.parquet_file_size
-                    and candidate_manifest["row_count"]
-                    == existing_verification.row_count
+                if _partition_matches_candidate(
+                    candidate_manifest, existing_verification
                 ):
                     unchanged.append(normalized_month)
                     continue
@@ -538,20 +628,17 @@ def write_monthly_fact_partitions(
                     f"Partition {normalized_month} already exists with different content"
                 )
 
-            if final_dir.exists():
-                raced = verify_monthly_fact_partition(root, normalized_month)
-                if (
-                    candidate_manifest["parquet_sha256"] == raced.parquet_sha256
-                    and candidate_manifest["parquet_file_size"] == raced.parquet_file_size
-                    and candidate_manifest["row_count"] == raced.row_count
-                ):
-                    unchanged.append(normalized_month)
-                    continue
-                raise PartitionConflictError(
-                    f"Partition {normalized_month} appeared with different content"
-                )
-            temp_dir.replace(final_dir)
-            written.append(normalized_month)
+            published = _publish_candidate_partition(
+                temp_dir=temp_dir,
+                final_dir=final_dir,
+                output_root=root,
+                month=normalized_month,
+                candidate_manifest=candidate_manifest,
+            )
+            if published:
+                written.append(normalized_month)
+            else:
+                unchanged.append(normalized_month)
         finally:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)

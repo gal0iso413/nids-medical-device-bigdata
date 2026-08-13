@@ -225,6 +225,59 @@ class MonthlyFactParquetTests(unittest.TestCase):
         self.assertEqual(result.written_months, ())
         self.assertEqual(result.unchanged_months, ("202601", "202602"))
 
+    def test_identical_partition_winning_publish_race_is_unchanged(self) -> None:
+        january = self.fact.loc[self.fact["month"].eq("202601")].copy()
+        competitor_root = self.temp_dir / "competitor-identical"
+        write_monthly_fact_partitions(january, competitor_root)
+        competitor = partition_dir(competitor_root, "202601")
+
+        def publish_race(source: Path, target: Path) -> Path:
+            shutil.copytree(competitor, target)
+            raise FileExistsError("synthetic identical publisher won")
+
+        with patch.object(
+            type(self.output_root),
+            "replace",
+            autospec=True,
+            side_effect=publish_race,
+        ):
+            result = write_monthly_fact_partitions(january, self.output_root)
+
+        self.assertEqual(result.written_months, ())
+        self.assertEqual(result.unchanged_months, ("202601",))
+        verify_monthly_fact_partition(self.output_root, "202601")
+        schema_root = partition_dir(self.output_root, "202601").parent
+        self.assertEqual(list(schema_root.glob(".month=*.tmp-*")), [])
+
+    def test_different_partition_winning_publish_race_is_conflict(self) -> None:
+        january = self.fact.loc[self.fact["month"].eq("202601")].copy()
+        different = january.copy(deep=True)
+        different.loc[different.index[0], "amount_sum_clean"] += Decimal("1")
+        competitor_root = self.temp_dir / "competitor-different"
+        write_monthly_fact_partitions(different, competitor_root)
+        competitor = partition_dir(competitor_root, "202601")
+
+        def publish_race(source: Path, target: Path) -> Path:
+            shutil.copytree(competitor, target)
+            raise PermissionError("synthetic different publisher won")
+
+        with patch.object(
+            type(self.output_root),
+            "replace",
+            autospec=True,
+            side_effect=publish_race,
+        ):
+            with self.assertRaisesRegex(
+                PartitionConflictError, "appeared with different content"
+            ):
+                write_monthly_fact_partitions(january, self.output_root)
+
+        stored = read_monthly_fact_partitions(self.output_root)
+        expected = different.reset_index(drop=True)
+        assert_frame_equal(stored, expected)
+        schema_root = partition_dir(self.output_root, "202601").parent
+        self.assertEqual(list(schema_root.glob(".month=*.tmp-*")), [])
+
     def test_different_content_cannot_overwrite_existing_month(self) -> None:
         write_monthly_fact_partitions(self.fact, self.output_root)
         original = verify_monthly_fact_partition(self.output_root, "202601")
@@ -311,6 +364,56 @@ class MonthlyFactParquetTests(unittest.TestCase):
             before,
         )
         self.assertEqual(list(schema_root.glob(".month=*.tmp-*")), [])
+
+    def test_manifest_write_oserror_is_wrapped_and_cleans_only_temp(self) -> None:
+        january = self.fact.loc[self.fact["month"].eq("202601")].copy()
+
+        with patch.object(
+            type(self.output_root),
+            "write_bytes",
+            autospec=True,
+            side_effect=OSError("synthetic manifest failure"),
+        ):
+            with self.assertRaisesRegex(
+                MonthlyFactStorageError,
+                "write canonical manifest for partition 202601",
+            ) as raised:
+                write_monthly_fact_partitions(january, self.output_root)
+
+        self.assertIsInstance(raised.exception.__cause__, OSError)
+        schema_root = partition_dir(self.output_root, "202601").parent
+        self.assertFalse(partition_dir(self.output_root, "202601").exists())
+        self.assertEqual(list(schema_root.glob(".month=*.tmp-*")), [])
+
+    def test_later_month_failure_preserves_prior_month_and_rerun_resumes(self) -> None:
+        from data_pipeline.storage import monthly_fact_parquet as storage
+
+        original_write_parquet = storage._write_parquet
+
+        def fail_february(table: pa.Table, path: Path) -> None:
+            if ".month=202602.tmp-" in path.parent.name:
+                raise OSError("synthetic February failure")
+            original_write_parquet(table, path)
+
+        with patch.object(storage, "_write_parquet", side_effect=fail_february):
+            with self.assertRaisesRegex(
+                MonthlyFactStorageError,
+                "temporary Parquet data for partition 202602",
+            ):
+                write_monthly_fact_partitions(self.fact, self.output_root)
+
+        january_before = verify_monthly_fact_partition(self.output_root, "202601")
+        self.assertFalse(partition_dir(self.output_root, "202602").exists())
+
+        resumed = write_monthly_fact_partitions(self.fact, self.output_root)
+
+        self.assertEqual(resumed.unchanged_months, ("202601",))
+        self.assertEqual(resumed.written_months, ("202602",))
+        self.assertEqual(
+            verify_monthly_fact_partition(self.output_root, "202601"),
+            january_before,
+        )
+        verify_monthly_fact_partition(self.output_root, "202602")
 
     def test_reader_does_not_hash_files_on_normal_read(self) -> None:
         write_monthly_fact_partitions(self.fact, self.output_root)
