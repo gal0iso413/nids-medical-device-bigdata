@@ -1,3 +1,4 @@
-# PR-02 monthly Parquet storage. Verified with Python 3.13.12.
+# Shared data pipeline. Verified with Python 3.13.12 for PR-03A.
 pandas>=2.2.0,<3.1.0
 pyarrow>=24.0.0,<25.0.0
+openpyxl>=3.1.5,<4.0.0
