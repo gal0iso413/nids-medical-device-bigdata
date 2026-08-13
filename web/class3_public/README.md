@@ -50,6 +50,8 @@ npm run dev
 
 mock JSON Schema와 fixture는 개발 전용 화면 계약이다. 후속 production OpenAPI 또는 공개 정책 임계값을 확정하지 않는다. 모든 fixture는 합성 데이터이며 실제 의료기기명, 업체·병원 식별자, 실제 수치를 포함하지 않는다.
 
+UI-01C의 검색·다중 선택·기간 적용은 이 fixture 범위 안에서 디자인과 사용성을 확인하기 위한 로컬 화면 상태다. 검색 후보를 fixture 밖에서 생성하지 않으며, 기간 변경으로 mock 분석값을 재계산하지 않는다. 품목별 결과와 포트폴리오 구성도 선택된 기존 계약 항목만 필터링해 표시한다.
+
 ## production 경계
 
 - production 모드에서는 mock 설정이 있어도 mock adapter를 선택하지 않는다.
@@ -65,4 +67,4 @@ mock JSON Schema와 fixture는 개발 전용 화면 계약이다. 후속 product
 
 외부 Pretendard CDN `@import`는 배포 보안·가용성·개인정보 정책이 확정되지 않아 사용하지 않는다. 현재는 `"Pretendard GOV"`, Pretendard, `"Apple SD Gothic Neo"`, `"Malgun Gothic"`, system-ui, sans-serif의 로컬 fallback stack만 사용한다. 폰트 self-hosting은 배포 정책 확정 후 별도 작업이다.
 
-검색·기간·비교 상호작용은 PR-C3-UI-01C, Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. 실제 공개 API 연결은 PR-C3-04와 PR-C3-UI-02에서 수행한다.
+Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. 실제 검색 dimension과 공개 API 연결은 PR-C3-04와 PR-C3-UI-02에서 수행한다.

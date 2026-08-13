@@ -23,6 +23,10 @@ input {
   font: inherit;
 }
 
+button {
+  min-height: 2.75rem;
+}
+
 :focus-visible {
   outline: 3px solid var(--c3-focus);
   outline-offset: 3px;
@@ -284,6 +288,65 @@ input::placeholder {
   font-size: var(--c3-meta);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.search-results {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0.5rem;
+  border: 1px solid var(--c3-line);
+  border-radius: var(--c3-radius-sm);
+  background: #f8fafc;
+  list-style: none;
+}
+
+.search-result-button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--c3-line);
+  border-radius: var(--c3-radius-sm);
+  background: var(--c3-surface);
+  color: var(--c3-ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.search-result-button:hover:not(:disabled) {
+  border-color: var(--c3-blue);
+  background: #edf4fb;
+}
+
+.search-result-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.search-result-state {
+  color: var(--c3-navy);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.search-empty {
+  padding: 0.75rem;
+  color: var(--c3-muted);
+}
+
 .placeholder-note {
   margin: 0.75rem 0 0;
 }
@@ -333,6 +396,20 @@ input::placeholder {
   color: #0b5a55;
 }
 
+.remove-selection {
+  flex: 0 0 auto;
+  min-height: 2rem;
+  margin-left: auto;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #8fc9c3;
+  border-radius: 6px;
+  background: var(--c3-surface);
+  color: #0b5a55;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 .type-badge {
   flex: 0 0 auto;
   font-size: 0.78rem;
@@ -357,6 +434,39 @@ input::placeholder {
 
 .field-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-error {
+  margin: 0.75rem 0 0;
+  color: var(--c3-danger);
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.period-apply {
+  margin-top: 0.85rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--c3-navy);
+  border-radius: var(--c3-radius-sm);
+  background: var(--c3-navy);
+  color: var(--c3-surface);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.period-apply:disabled {
+  border-color: var(--c3-line-strong);
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.period-note {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.75rem 0 0;
+  color: var(--c3-muted);
+  font-size: 0.8rem;
 }
 
 .results-section,
@@ -405,6 +515,39 @@ input::placeholder {
   color: var(--c3-muted);
 }
 
+.released-content {
+  display: grid;
+  gap: 1px;
+  margin: 1rem 0 0;
+  overflow: hidden;
+  border: 1px solid var(--c3-line);
+  border-radius: var(--c3-radius-sm);
+  background: var(--c3-line);
+}
+
+.released-content div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.45fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.7rem;
+  background: #f8fafc;
+}
+
+.released-content dt {
+  color: var(--c3-muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.released-content dd {
+  min-width: 0;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
 .empty-copy--prominent {
   max-width: 40rem;
   margin: 0;
@@ -431,6 +574,38 @@ input::placeholder {
 
 .placeholder-panel strong {
   color: var(--c3-ink);
+}
+
+.trend-list,
+.composition-list,
+.reach-list {
+  width: 100%;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.trend-list li,
+.composition-list li,
+.reach-list li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--c3-line);
+  border-radius: var(--c3-radius-sm);
+  background: var(--c3-surface);
+  overflow-wrap: anywhere;
+}
+
+.composition-list li,
+.reach-list li {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .insight-grid {
@@ -468,6 +643,10 @@ input::placeholder {
   border-top: 1px solid #c5d6ea;
   color: #334155;
   font-size: 0.9rem;
+}
+
+.reach-placeholder > p {
+  margin: 0;
 }
 
 .coverage-section {
@@ -602,6 +781,18 @@ input::placeholder {
     width: 100%;
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .search-result-button,
+  .released-content div,
+  .trend-list li,
+  .composition-list li,
+  .reach-list li {
+    grid-template-columns: 1fr;
+  }
+
+  .remove-selection {
+    margin-left: 0;
   }
 
   .results-section,
