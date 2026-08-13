@@ -117,6 +117,14 @@ class CheckpointMemoryLimitError(SupplyMonthlyCheckpointError):
     """Raised before loading a month whose conservative estimate is unsafe."""
 
 
+class IncompleteSourcePassError(SupplyMonthlyCheckpointError):
+    """Raised when this open session did not replay the complete source pass."""
+
+
+class SealedManifestConflictError(SupplyMonthlyCheckpointError):
+    """Raised when an existing sealed manifest differs from the sealed database."""
+
+
 @dataclass(frozen=True)
 class BatchApplyResult:
     rows_input: int
@@ -244,6 +252,104 @@ def _manifest_with_run_id(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "run_id": run_id}
 
 
+def _validate_run_manifest(manifest: dict[str, Any], expected_run_id: str) -> None:
+    expected_fields = {
+        "checkpoint_contract_version",
+        "dataset_name",
+        "fact_schema_fingerprint",
+        "fact_schema_name",
+        "fact_schema_version",
+        "master",
+        "reducer_contract_version",
+        "run_id",
+        "supply",
+    }
+    if set(manifest) != expected_fields:
+        raise CheckpointLineageError("Checkpoint run manifest field set is invalid")
+    fixed = {
+        "checkpoint_contract_version": CHECKPOINT_CONTRACT_VERSION,
+        "dataset_name": DATASET_NAME,
+        "fact_schema_fingerprint": FACT_SCHEMA_FINGERPRINT,
+        "fact_schema_name": FACT_SCHEMA_NAME,
+        "fact_schema_version": FACT_SCHEMA_VERSION,
+        "reducer_contract_version": REDUCER_CONTRACT_VERSION,
+    }
+    if any(manifest.get(key) != value for key, value in fixed.items()):
+        raise CheckpointLineageError("Checkpoint run manifest contract differs")
+    run_id = manifest.get("run_id")
+    if not isinstance(run_id, str) or run_id != expected_run_id:
+        raise CheckpointLineageError("Checkpoint run manifest run ID differs")
+    payload = {key: value for key, value in manifest.items() if key != "run_id"}
+    if _sha256_bytes(_canonical_json_bytes(payload)) != run_id:
+        raise CheckpointLineageError("Checkpoint run manifest payload hash differs")
+    supply = manifest.get("supply")
+    master = manifest.get("master")
+    if not isinstance(supply, dict) or not isinstance(master, dict):
+        raise CheckpointLineageError("Checkpoint run lineage payload is invalid")
+    if set(supply) != {"adapter_contract_version", "source_version", "workbooks"}:
+        raise CheckpointLineageError("Checkpoint supply lineage field set is invalid")
+    if supply.get("adapter_contract_version") != ADAPTER_CONTRACT_VERSION:
+        raise CheckpointLineageError("Checkpoint supply adapter version differs")
+    if not isinstance(supply.get("source_version"), str):
+        raise CheckpointLineageError("Checkpoint supply source version is invalid")
+    workbooks = supply.get("workbooks")
+    if not isinstance(workbooks, list):
+        raise CheckpointLineageError("Checkpoint supply workbook lineage is invalid")
+    for workbook in workbooks:
+        if (
+            not isinstance(workbook, dict)
+            or set(workbook) != {"byte_size", "logical_name", "sha256"}
+            or not isinstance(workbook.get("logical_name"), str)
+            or not isinstance(workbook.get("sha256"), str)
+            or _HEX_PATTERN.fullmatch(workbook["sha256"]) is None
+        ):
+            raise CheckpointLineageError("Checkpoint supply workbook lineage is invalid")
+        _require_nonnegative_int(workbook.get("byte_size"), "workbook byte_size")
+    expected_master = {
+        "database_file_size", "database_sha256", "logical_schema_version",
+        "source_hash", "source_version", "storage_contract_version",
+        "unique_key_count",
+    }
+    if set(master) != expected_master:
+        raise CheckpointLineageError("Checkpoint master lineage field set is invalid")
+    if (
+        master.get("logical_schema_version") != MASTER_SCHEMA_VERSION
+        or master.get("storage_contract_version") != MASTER_STORAGE_VERSION
+    ):
+        raise CheckpointLineageError("Checkpoint master contract version differs")
+    _require_nonnegative_int(master.get("database_file_size"), "master database_file_size")
+    _require_nonnegative_int(master.get("unique_key_count"), "master unique_key_count")
+    for field in ("database_sha256", "source_hash"):
+        value = master.get(field)
+        if not isinstance(value, str) or _HEX_PATTERN.fullmatch(value) is None:
+            raise CheckpointLineageError(f"Checkpoint master {field} is invalid")
+    if not isinstance(master.get("source_version"), str):
+        raise CheckpointLineageError("Checkpoint master source version is invalid")
+
+
+def _require_nonnegative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CheckpointIntegrityError(f"{field} must be a nonnegative integer")
+    return value
+
+
+def _validate_max_fact_bytes(max_fact_bytes: int) -> None:
+    if isinstance(max_fact_bytes, bool) or not isinstance(max_fact_bytes, int) or max_fact_bytes < 1:
+        raise ValueError("max_fact_bytes must be a positive integer")
+
+
+def _estimated_fact_bytes(grain_count: int) -> int:
+    return grain_count * ESTIMATED_FACT_BYTES_PER_GRAIN
+
+
+def _raise_if_month_exceeds_limit(month: str, grain_count: int, max_fact_bytes: int) -> None:
+    estimated = _estimated_fact_bytes(grain_count)
+    if estimated > max_fact_bytes:
+        raise CheckpointMemoryLimitError(
+            f"Month {month} estimated fact bytes {estimated} exceed limit {max_fact_bytes}"
+        )
+
+
 def _run_dir(checkpoint_root: Path, run_id: str) -> Path:
     if not isinstance(checkpoint_root, Path):
         raise TypeError("checkpoint_root must be pathlib.Path")
@@ -348,25 +454,28 @@ CREATE TABLE grain_quality_flag(
   product_id TEXT NOT NULL, quality_flag TEXT NOT NULL,
   PRIMARY KEY(month,src_company_id,dst_company_id,product_id,quality_flag)
 ) WITHOUT ROWID;
-CREATE TABLE adapter_final_report(
+CREATE TABLE sealed_summary(
   singleton INTEGER PRIMARY KEY CHECK(singleton=1),
-  report_json TEXT NOT NULL,
-  report_sha256 TEXT NOT NULL
+  summary_json TEXT NOT NULL,
+  summary_sha256 TEXT NOT NULL
 );
 """
 
 
 def _open_active_database(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.create_function("decimal_add", 2, _decimal_add, deterministic=True)
-    connection.execute("PRAGMA foreign_keys=ON")
-    connection.execute("PRAGMA synchronous=NORMAL")
-    mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()[0]
-    if str(mode).lower() != "wal":
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.create_function("decimal_add", 2, _decimal_add, deterministic=True)
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute("PRAGMA synchronous=NORMAL")
+        mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        if str(mode).lower() != "wal":
+            raise CheckpointIntegrityError("Checkpoint SQLite could not enable WAL mode")
+        return connection
+    except Exception:
         connection.close()
-        raise CheckpointIntegrityError("Checkpoint SQLite could not enable WAL mode")
-    return connection
+        raise
 
 
 def _create_database(path: Path, run_manifest: dict[str, Any]) -> sqlite3.Connection:
@@ -399,7 +508,7 @@ def _quick_check(connection: sqlite3.Connection) -> None:
         "grain_distinct_udi",
         "grain_distinct_day",
         "grain_quality_flag",
-        "adapter_final_report",
+        "sealed_summary",
     }
     tables = {
         row[0]
@@ -584,6 +693,7 @@ class SupplyMonthlyCheckpoint:
         self.run_id = str(run_manifest["run_id"])
         self._connection = connection
         self._closed = False
+        self._session_rows_seen = 0
         self.verify_active()
 
     def __enter__(self) -> "SupplyMonthlyCheckpoint":
@@ -709,6 +819,7 @@ class SupplyMonthlyCheckpoint:
                         "INSERT OR IGNORE INTO grain_quality_flag VALUES (?,?,?,?,?)", flag_rows
                     )
             connection.commit()
+            self._session_rows_seen += len(batch)
         except Exception:
             if connection.in_transaction:
                 connection.rollback()
@@ -724,12 +835,24 @@ class SupplyMonthlyCheckpoint:
     def _fact_for_month(self, month: str) -> pd.DataFrame:
         return _fact_for_month(self._connection, month, self.run_manifest["supply"]["source_version"])
 
-    def seal(self, *, adapter_report: SupplyIngestionReport) -> SealedCheckpointResult:
+    def seal(
+        self,
+        *,
+        adapter_report: SupplyIngestionReport,
+        max_fact_bytes: int,
+    ) -> SealedCheckpointResult:
         if self.state == "sealed":
             raise CheckpointSealedError("Checkpoint is already sealed")
+        _validate_max_fact_bytes(max_fact_bytes)
         adapter_report.validate_accounting()
         if adapter_report.rows_read == 0 or adapter_report.rows_emitted == 0:
             raise EmptySupplyInputError("Supply stream emitted no eligible rows")
+        if self._session_rows_seen != adapter_report.rows_emitted:
+            raise IncompleteSourcePassError(
+                "Open-session source coverage differs from adapter rows_emitted: "
+                f"session_rows_seen={self._session_rows_seen}; "
+                f"adapter_rows_emitted={adapter_report.rows_emitted}"
+            )
         counts = self._connection.execute(
             "SELECT COUNT(*),COALESCE(SUM(classification),0) FROM source_row_ledger"
         ).fetchone()
@@ -748,6 +871,17 @@ class SupplyMonthlyCheckpoint:
                 "SELECT DISTINCT month FROM source_row_ledger ORDER BY month"
             )
         )
+        grain_counts = {
+            str(row[0]): int(row[1])
+            for row in self._connection.execute(
+                "SELECT month,COUNT(*) FROM grain_accumulator GROUP BY month ORDER BY month"
+            )
+        }
+        for month in months:
+            _raise_if_month_exceeds_limit(
+                month, grain_counts.get(month, 0), max_fact_bytes
+            )
+
         fact_fingerprints: list[tuple[str, str]] = []
         month_entries: list[dict[str, Any]] = []
         accumulator_tx = int(
@@ -766,6 +900,8 @@ class SupplyMonthlyCheckpoint:
                 (month,),
             ).fetchone()
             grain_count = len(fact)
+            if grain_count != grain_counts.get(month, 0):
+                raise CheckpointIntegrityError("Restored month grain count differs")
             month_entries.append(
                 {
                     "fact_fingerprint": fingerprint,
@@ -776,20 +912,52 @@ class SupplyMonthlyCheckpoint:
                 }
             )
 
+        unmatched_sample = [
+            _source_row_id(bytes(row[0]))
+            for row in self._connection.execute(
+                "SELECT source_row_digest FROM source_row_ledger "
+                "WHERE classification=0 ORDER BY source_row_digest LIMIT ?",
+                (DIAGNOSTIC_LIMIT,),
+            ).fetchall()
+        ]
         report_payload = _json_value(adapter_report)
         report_json = _canonical_json_bytes(report_payload).decode("utf-8")
         report_sha = _sha256_bytes(report_json.encode("utf-8"))
+        sealed_summary = {
+            "adapter_report": report_payload,
+            "adapter_report_sha256": report_sha,
+            "ledger_rows": ledger_rows,
+            "matched_rows": matched_rows,
+            "months": month_entries,
+            "quality_report": {
+                "adapter_rows_emitted": adapter_report.rows_emitted,
+                "adapter_rows_read": adapter_report.rows_read,
+                "adapter_rows_rejected": adapter_report.rows_rejected,
+                "exact_duplicate_rows": adapter_report.rows_emitted - ledger_rows,
+                "unmatched_omitted": max(unmatched_rows - len(unmatched_sample), 0),
+                "unmatched_source_row_ids": unmatched_sample,
+            },
+            "unmatched_rows": unmatched_rows,
+        }
+        summary_json = _canonical_json_bytes(sealed_summary).decode("utf-8")
+        summary_sha = _sha256_bytes(summary_json.encode("utf-8"))
         try:
             self._connection.execute("BEGIN IMMEDIATE")
             self._connection.execute(
-                "INSERT INTO adapter_final_report VALUES (1,?,?)",
-                (report_json, report_sha),
+                "INSERT INTO sealed_summary VALUES (1,?,?)",
+                (summary_json, summary_sha),
             )
             self._connection.execute(
                 "UPDATE run_metadata SET state='sealed' WHERE singleton=1"
             )
             self._connection.commit()
-            self._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            checkpoint_result = self._connection.execute(
+                "PRAGMA wal_checkpoint(TRUNCATE)"
+            ).fetchone()
+            if checkpoint_result is None or int(checkpoint_result[0]) != 0:
+                raise CheckpointIntegrityError(
+                    "Checkpoint WAL truncate remained busy after seal"
+                )
         except Exception:
             if self._connection.in_transaction:
                 self._connection.rollback()
@@ -800,59 +968,7 @@ class SupplyMonthlyCheckpoint:
         for suffix in ("-wal", "-shm", "-journal"):
             if Path(str(database_path) + suffix).exists():
                 raise CheckpointIntegrityError("SQLite sidecar remains after seal")
-        try:
-            database_size = database_path.stat().st_size
-        except OSError as exc:
-            raise CheckpointIntegrityError("Could not stat sealed checkpoint SQLite") from exc
-        database_sha = _sha256_file(database_path)
-        sample_connection = sqlite3.connect(database_path)
-        try:
-            unmatched_sample = [
-                _source_row_id(bytes(row[0]))
-                for row in sample_connection.execute(
-                    "SELECT source_row_digest FROM source_row_ledger "
-                    "WHERE classification=0 ORDER BY source_row_digest LIMIT ?",
-                    (DIAGNOSTIC_LIMIT,),
-                ).fetchall()
-            ]
-        finally:
-            sample_connection.close()
-        sealed_manifest = {
-            "adapter_report": report_payload,
-            "adapter_report_sha256": report_sha,
-            "checkpoint_contract_version": CHECKPOINT_CONTRACT_VERSION,
-            "database_file_size": database_size,
-            "database_sha256": database_sha,
-            "dataset_name": DATASET_NAME,
-            "fact_schema_fingerprint": FACT_SCHEMA_FINGERPRINT,
-            "ledger_rows": ledger_rows,
-            "matched_rows": matched_rows,
-            "months": month_entries,
-            "quality_report": {
-                "adapter_rows_emitted": adapter_report.rows_emitted,
-                "adapter_rows_read": adapter_report.rows_read,
-                "adapter_rows_rejected": adapter_report.rows_rejected,
-                "exact_duplicate_rows": max(adapter_report.rows_emitted - ledger_rows, 0),
-                "unmatched_omitted": max(unmatched_rows - len(unmatched_sample), 0),
-                "unmatched_source_row_ids": unmatched_sample,
-            },
-            "relative_database_path": _relative_database_path(self.run_id),
-            "run_id": self.run_id,
-            "run_manifest_sha256": _sha256_file(self.run_dir / RUN_MANIFEST_FILENAME),
-            "unmatched_rows": unmatched_rows,
-        }
-        _write_canonical(self.run_dir / SEALED_MANIFEST_FILENAME, sealed_manifest)
-        return SealedCheckpointResult(
-            self.run_id,
-            months,
-            ledger_rows,
-            matched_rows,
-            unmatched_rows,
-            sealed_manifest["relative_database_path"],
-            database_sha,
-            database_size,
-            tuple(fact_fingerprints),
-        )
+        return finalize_sealed_supply_checkpoint(self.run_dir.parents[2], self.run_id)
 
 
 def _fact_for_month(
@@ -959,6 +1075,233 @@ def _fact_fingerprint(fact: pd.DataFrame) -> str:
     return _sha256_bytes(_canonical_json_bytes(rows))
 
 
+def _open_readonly_database(path: Path) -> sqlite3.Connection:
+    uri = path.resolve().as_uri() + "?mode=ro&immutable=1"
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise CheckpointIntegrityError("Could not open sealed checkpoint SQLite read-only") from exc
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _read_database_sealed_summary(
+    connection: sqlite3.Connection,
+) -> tuple[dict[str, Any], str]:
+    row = connection.execute(
+        "SELECT summary_json,summary_sha256 FROM sealed_summary WHERE singleton=1"
+    ).fetchone()
+    if row is None or not isinstance(row[0], str) or not isinstance(row[1], str):
+        raise CheckpointIntegrityError("Checkpoint sealed summary is missing")
+    raw = row[0].encode("utf-8")
+    try:
+        summary = json.loads(row[0])
+    except json.JSONDecodeError as exc:
+        raise CheckpointIntegrityError("Checkpoint sealed summary JSON is invalid") from exc
+    if not isinstance(summary, dict) or raw != _canonical_json_bytes(summary):
+        raise CheckpointIntegrityError("Checkpoint sealed summary is not canonical JSON")
+    digest = _sha256_bytes(raw)
+    if not _HEX_PATTERN.fullmatch(row[1]) or row[1] != digest:
+        raise CheckpointIntegrityError("Checkpoint sealed summary hash differs")
+    return summary, digest
+
+
+def _adapter_accounting_from_payload(payload: Any) -> tuple[int, int, int]:
+    if not isinstance(payload, dict):
+        raise CheckpointIntegrityError("Sealed adapter report must be an object")
+    profiles = payload.get("sheet_profiles")
+    rejected = payload.get("rejected_by_reason")
+    if not isinstance(profiles, list) or not isinstance(rejected, dict):
+        raise CheckpointIntegrityError("Sealed adapter report accounting fields are invalid")
+
+    def reject_negative_counts(value: Any) -> None:
+        if isinstance(value, bool):
+            return
+        if isinstance(value, int) and value < 0:
+            raise CheckpointIntegrityError("Sealed adapter report contains a negative count")
+        if isinstance(value, dict):
+            for child in value.values():
+                reject_negative_counts(child)
+        elif isinstance(value, list):
+            for child in value:
+                reject_negative_counts(child)
+
+    reject_negative_counts(payload)
+    rows_read = 0
+    rows_emitted = 0
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            raise CheckpointIntegrityError("Sealed adapter sheet profile is invalid")
+        rows_read += _require_nonnegative_int(profile.get("rows_read"), "rows_read")
+        rows_emitted += _require_nonnegative_int(
+            profile.get("rows_emitted"), "rows_emitted"
+        )
+    rows_rejected = 0
+    for reason, count in rejected.items():
+        if not isinstance(reason, str):
+            raise CheckpointIntegrityError("Adapter rejected reason is invalid")
+        rows_rejected += _require_nonnegative_int(count, "rejected_by_reason count")
+    if rows_read != rows_emitted + rows_rejected:
+        raise CheckpointIntegrityError("Sealed adapter report accounting differs")
+    return rows_read, rows_emitted, rows_rejected
+
+
+def _validate_sealed_summary(
+    connection: sqlite3.Connection,
+    summary: dict[str, Any],
+    summary_sha256: str,
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], int, int, int]:
+    expected_fields = {
+        "adapter_report", "adapter_report_sha256", "ledger_rows",
+        "matched_rows", "months", "quality_report", "unmatched_rows",
+    }
+    if set(summary) != expected_fields:
+        raise CheckpointIntegrityError("Checkpoint sealed summary field set is invalid")
+    if summary_sha256 != _sha256_bytes(_canonical_json_bytes(summary)):
+        raise CheckpointIntegrityError("Checkpoint sealed summary hash differs")
+    adapter_report = summary["adapter_report"]
+    adapter_hash = summary["adapter_report_sha256"]
+    if (
+        not isinstance(adapter_hash, str)
+        or not _HEX_PATTERN.fullmatch(adapter_hash)
+        or adapter_hash != _sha256_bytes(_canonical_json_bytes(adapter_report))
+    ):
+        raise CheckpointIntegrityError("Sealed adapter report hash differs")
+    adapter_read, adapter_emitted, adapter_rejected = _adapter_accounting_from_payload(
+        adapter_report
+    )
+
+    ledger_rows = _require_nonnegative_int(summary["ledger_rows"], "ledger_rows")
+    matched_rows = _require_nonnegative_int(summary["matched_rows"], "matched_rows")
+    unmatched_rows = _require_nonnegative_int(summary["unmatched_rows"], "unmatched_rows")
+    if ledger_rows != matched_rows + unmatched_rows:
+        raise CheckpointIntegrityError("Sealed row classification counts differ")
+    sql_counts = connection.execute(
+        "SELECT COUNT(*),COALESCE(SUM(classification),0) FROM source_row_ledger"
+    ).fetchone()
+    if (ledger_rows, matched_rows) != (int(sql_counts[0]), int(sql_counts[1])):
+        raise CheckpointIntegrityError("Sealed summary ledger counts differ from SQLite")
+
+    month_entries = summary["months"]
+    if not isinstance(month_entries, list):
+        raise CheckpointIntegrityError("Sealed month entries must be a list")
+    expected_month_fields = {
+        "fact_fingerprint", "grain_count", "matched_rows", "month",
+        "unmatched_rows",
+    }
+    months: list[str] = []
+    fingerprints: list[tuple[str, str]] = []
+    for entry in month_entries:
+        if not isinstance(entry, dict) or set(entry) != expected_month_fields:
+            raise CheckpointIntegrityError("Sealed month entry field set is invalid")
+        month = entry["month"]
+        fingerprint = entry["fact_fingerprint"]
+        if not isinstance(month, str) or not _MONTH_PATTERN.fullmatch(month):
+            raise CheckpointIntegrityError("Sealed month value is invalid")
+        if not isinstance(fingerprint, str) or not _HEX_PATTERN.fullmatch(fingerprint):
+            raise CheckpointIntegrityError("Sealed month fact fingerprint is invalid")
+        grain_count = _require_nonnegative_int(entry["grain_count"], "grain_count")
+        month_matched = _require_nonnegative_int(entry["matched_rows"], "month matched_rows")
+        month_unmatched = _require_nonnegative_int(
+            entry["unmatched_rows"], "month unmatched_rows"
+        )
+        sql_month = connection.execute(
+            "SELECT COUNT(*),COALESCE(SUM(classification),0) "
+            "FROM source_row_ledger WHERE month=?",
+            (month,),
+        ).fetchone()
+        sql_grains = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM grain_accumulator WHERE month=?", (month,)
+            ).fetchone()[0]
+        )
+        if (
+            int(sql_month[1]) != month_matched
+            or int(sql_month[0]) - int(sql_month[1]) != month_unmatched
+            or sql_grains != grain_count
+        ):
+            raise CheckpointIntegrityError("Sealed month counts differ from SQLite")
+        months.append(month)
+        fingerprints.append((month, fingerprint))
+    sql_months = [
+        str(row[0])
+        for row in connection.execute(
+            "SELECT DISTINCT month FROM source_row_ledger ORDER BY month"
+        )
+    ]
+    if months != sorted(set(months)) or months != sql_months:
+        raise CheckpointIntegrityError("Sealed month list differs from SQLite")
+    if sum(entry["matched_rows"] for entry in month_entries) != matched_rows:
+        raise CheckpointIntegrityError("Sealed monthly matched counts differ")
+    if sum(entry["unmatched_rows"] for entry in month_entries) != unmatched_rows:
+        raise CheckpointIntegrityError("Sealed monthly unmatched counts differ")
+
+    quality = summary["quality_report"]
+    expected_quality_fields = {
+        "adapter_rows_emitted", "adapter_rows_read", "adapter_rows_rejected",
+        "exact_duplicate_rows", "unmatched_omitted", "unmatched_source_row_ids",
+    }
+    if not isinstance(quality, dict) or set(quality) != expected_quality_fields:
+        raise CheckpointIntegrityError("Sealed quality report field set is invalid")
+    quality_numbers = {
+        key: _require_nonnegative_int(quality[key], key)
+        for key in expected_quality_fields - {"unmatched_source_row_ids"}
+    }
+    if (
+        quality_numbers["adapter_rows_read"] != adapter_read
+        or quality_numbers["adapter_rows_emitted"] != adapter_emitted
+        or quality_numbers["adapter_rows_rejected"] != adapter_rejected
+        or quality_numbers["exact_duplicate_rows"] != adapter_emitted - ledger_rows
+    ):
+        raise CheckpointIntegrityError("Sealed quality accounting differs")
+    sample = quality["unmatched_source_row_ids"]
+    if (
+        not isinstance(sample, list)
+        or len(sample) > DIAGNOSTIC_LIMIT
+        or any(not isinstance(item, str) or _SOURCE_ROW_PATTERN.fullmatch(item) is None for item in sample)
+        or quality_numbers["unmatched_omitted"] != unmatched_rows - len(sample)
+    ):
+        raise CheckpointIntegrityError("Sealed unmatched diagnostic is invalid")
+    expected_sample = [
+        _source_row_id(bytes(row[0]))
+        for row in connection.execute(
+            "SELECT source_row_digest FROM source_row_ledger "
+            "WHERE classification=0 ORDER BY source_row_digest LIMIT ?",
+            (DIAGNOSTIC_LIMIT,),
+        )
+    ]
+    if sample != expected_sample:
+        raise CheckpointIntegrityError("Sealed unmatched diagnostic differs from SQLite")
+    return tuple(months), tuple(fingerprints), ledger_rows, matched_rows, unmatched_rows
+
+
+def _validate_sealed_database(
+    database_path: Path,
+    run_manifest: dict[str, Any],
+) -> tuple[dict[str, Any], str, tuple[str, ...], tuple[tuple[str, str], ...], int, int, int]:
+    connection = _open_readonly_database(database_path)
+    try:
+        _quick_check(connection)
+        _verify_reducer_invariants(connection)
+        metadata = connection.execute(
+            "SELECT run_id,supply_source_version,state FROM run_metadata WHERE singleton=1"
+        ).fetchone()
+        if (
+            metadata is None
+            or metadata["run_id"] != run_manifest["run_id"]
+            or metadata["supply_source_version"] != run_manifest["supply"]["source_version"]
+            or metadata["state"] != "sealed"
+        ):
+            raise CheckpointIntegrityError("Sealed checkpoint run metadata differs")
+        summary, summary_sha = _read_database_sealed_summary(connection)
+        months, fingerprints, ledger, matched, unmatched = _validate_sealed_summary(
+            connection, summary, summary_sha
+        )
+        return summary, summary_sha, months, fingerprints, ledger, matched, unmatched
+    finally:
+        connection.close()
+
+
 def create_or_open_supply_monthly_checkpoint(
     checkpoint_root: Path,
     *,
@@ -974,27 +1317,42 @@ def create_or_open_supply_monthly_checkpoint(
         existing = _read_canonical(run_manifest_path)
         if existing != manifest:
             raise CheckpointLineageError("Existing checkpoint run manifest differs")
+        _validate_run_manifest(existing, manifest["run_id"])
         if not database_path.is_file():
-            raise CheckpointIntegrityError("Checkpoint SQLite is missing")
+            unexpected = [
+                child.name for child in run_dir.iterdir()
+                if child.name != RUN_MANIFEST_FILENAME
+            ]
+            if unexpected:
+                raise CheckpointIntegrityError(
+                    "Checkpoint SQLite is missing but other run artifacts exist"
+                )
+            connection = _create_database(database_path, manifest)
+            try:
+                return SupplyMonthlyCheckpoint(run_dir, manifest, connection)
+            except Exception:
+                connection.close()
+                raise
         if (run_dir / SEALED_MANIFEST_FILENAME).is_file():
             verify_sealed_supply_checkpoint(checkpoint_root, manifest["run_id"])
             raise CheckpointSealedError("Checkpoint is sealed and immutable")
         connection = _open_active_database(database_path)
-        checkpoint = SupplyMonthlyCheckpoint(run_dir, manifest, connection)
+        try:
+            checkpoint = SupplyMonthlyCheckpoint(run_dir, manifest, connection)
+        except Exception:
+            connection.close()
+            raise
         if checkpoint.state != "active":
             checkpoint.close()
             raise CheckpointIntegrityError("Sealed SQLite is missing its sealed manifest")
         return checkpoint
+    run_dir.mkdir(parents=True)
+    _write_canonical(run_manifest_path, manifest)
+    connection = _create_database(database_path, manifest)
     try:
-        run_dir.mkdir(parents=True)
-        _write_canonical(run_manifest_path, manifest)
-        connection = _create_database(database_path, manifest)
         return SupplyMonthlyCheckpoint(run_dir, manifest, connection)
     except Exception:
-        if run_dir.exists() and not database_path.exists():
-            for child in run_dir.iterdir():
-                child.unlink(missing_ok=True)
-            run_dir.rmdir()
+        connection.close()
         raise
 
 
@@ -1013,51 +1371,125 @@ def verify_sealed_supply_checkpoint(
 ) -> SealedCheckpointResult:
     run_manifest_path, database_path, sealed_path = _sealed_paths(checkpoint_root, run_id)
     run_manifest = _read_canonical(run_manifest_path)
+    _validate_run_manifest(run_manifest, run_id)
+    if not database_path.is_file():
+        raise CheckpointIntegrityError("Sealed checkpoint SQLite is missing")
     sealed = _read_canonical(sealed_path)
     required_sealed = {
-        "adapter_report", "adapter_report_sha256", "checkpoint_contract_version",
-        "database_file_size", "database_sha256", "dataset_name",
-        "fact_schema_fingerprint", "ledger_rows", "matched_rows", "months",
-        "quality_report", "relative_database_path", "run_id",
-        "run_manifest_sha256", "unmatched_rows",
+        "checkpoint_contract_version", "database_file_size", "database_sha256",
+        "dataset_name", "fact_schema_fingerprint", "fact_schema_name",
+        "fact_schema_version", "reducer_contract_version",
+        "relative_database_path", "run_id", "run_manifest_sha256",
+        "sealed_summary", "sealed_summary_sha256",
     }
     if set(sealed) != required_sealed:
         raise CheckpointIntegrityError("Sealed manifest field set is invalid")
-    if run_manifest.get("run_id") != run_id or sealed.get("run_id") != run_id:
+    fixed = {
+        "checkpoint_contract_version": CHECKPOINT_CONTRACT_VERSION,
+        "dataset_name": DATASET_NAME,
+        "fact_schema_fingerprint": FACT_SCHEMA_FINGERPRINT,
+        "fact_schema_name": FACT_SCHEMA_NAME,
+        "fact_schema_version": FACT_SCHEMA_VERSION,
+        "reducer_contract_version": REDUCER_CONTRACT_VERSION,
+        "relative_database_path": _relative_database_path(run_id),
+        "run_id": run_id,
+    }
+    if any(sealed.get(key) != value for key, value in fixed.items()):
         raise CheckpointLineageError("Sealed checkpoint run ID differs")
+    database_size = _require_nonnegative_int(
+        sealed.get("database_file_size"), "database_file_size"
+    )
+    database_sha = sealed.get("database_sha256")
+    run_manifest_sha = sealed.get("run_manifest_sha256")
+    summary_sha = sealed.get("sealed_summary_sha256")
+    if any(
+        not isinstance(value, str) or _HEX_PATTERN.fullmatch(value) is None
+        for value in (database_sha, run_manifest_sha, summary_sha)
+    ):
+        raise CheckpointIntegrityError("Sealed manifest checksum field is invalid")
     if sealed.get("run_manifest_sha256") != _sha256_file(run_manifest_path):
         raise CheckpointIntegrityError("Sealed run manifest checksum differs")
     try:
         size = database_path.stat().st_size
     except OSError as exc:
         raise CheckpointIntegrityError("Sealed checkpoint SQLite is missing") from exc
+    for suffix in ("-wal", "-shm", "-journal"):
+        if Path(str(database_path) + suffix).exists():
+            raise CheckpointIntegrityError("SQLite sidecar exists beside sealed checkpoint")
     checksum = _sha256_file(database_path)
-    if sealed.get("database_file_size") != size or sealed.get("database_sha256") != checksum:
+    if database_size != size or database_sha != checksum:
         raise CheckpointIntegrityError("Sealed checkpoint SQLite checksum differs")
-    uri = database_path.resolve().as_uri() + "?mode=ro"
-    connection = sqlite3.connect(uri, uri=True)
-    connection.row_factory = sqlite3.Row
-    try:
-        _quick_check(connection)
-        _verify_reducer_invariants(connection)
-        state = connection.execute("SELECT state FROM run_metadata WHERE singleton=1").fetchone()
-        if state is None or state[0] != "sealed":
-            raise CheckpointIntegrityError("Checkpoint SQLite is not sealed")
-    finally:
-        connection.close()
-    months = tuple(entry["month"] for entry in sealed["months"])
-    fingerprints = tuple(
-        (entry["month"], entry["fact_fingerprint"]) for entry in sealed["months"]
+    summary, database_summary_sha, months, fingerprints, ledger, matched, unmatched = (
+        _validate_sealed_database(database_path, run_manifest)
     )
+    if sealed["sealed_summary"] != summary or summary_sha != database_summary_sha:
+        raise CheckpointIntegrityError("Sealed manifest summary differs from SQLite")
     return SealedCheckpointResult(
         run_id,
         months,
-        int(sealed["ledger_rows"]),
-        int(sealed["matched_rows"]),
-        int(sealed["unmatched_rows"]),
+        ledger,
+        matched,
+        unmatched,
         str(sealed["relative_database_path"]),
         checksum,
         size,
+        fingerprints,
+    )
+
+
+def finalize_sealed_supply_checkpoint(
+    checkpoint_root: Path,
+    run_id: str,
+) -> SealedCheckpointResult:
+    """Create or verify only the manifest for an already sealed SQLite file."""
+
+    run_manifest_path, database_path, sealed_path = _sealed_paths(checkpoint_root, run_id)
+    run_manifest = _read_canonical(run_manifest_path)
+    _validate_run_manifest(run_manifest, run_id)
+    if not database_path.is_file():
+        raise CheckpointIntegrityError("Sealed checkpoint SQLite is missing")
+    for suffix in ("-wal", "-shm", "-journal"):
+        if Path(str(database_path) + suffix).exists():
+            raise CheckpointIntegrityError("SQLite sidecar remains after seal")
+    summary, summary_sha, months, fingerprints, ledger, matched, unmatched = (
+        _validate_sealed_database(database_path, run_manifest)
+    )
+    try:
+        database_size = database_path.stat().st_size
+    except OSError as exc:
+        raise CheckpointIntegrityError("Could not stat sealed checkpoint SQLite") from exc
+    database_sha = _sha256_file(database_path)
+    manifest = {
+        "checkpoint_contract_version": CHECKPOINT_CONTRACT_VERSION,
+        "database_file_size": database_size,
+        "database_sha256": database_sha,
+        "dataset_name": DATASET_NAME,
+        "fact_schema_fingerprint": FACT_SCHEMA_FINGERPRINT,
+        "fact_schema_name": FACT_SCHEMA_NAME,
+        "fact_schema_version": FACT_SCHEMA_VERSION,
+        "reducer_contract_version": REDUCER_CONTRACT_VERSION,
+        "relative_database_path": _relative_database_path(run_id),
+        "run_id": run_id,
+        "run_manifest_sha256": _sha256_file(run_manifest_path),
+        "sealed_summary": summary,
+        "sealed_summary_sha256": summary_sha,
+    }
+    if sealed_path.exists():
+        if _read_canonical(sealed_path) != manifest:
+            raise SealedManifestConflictError(
+                "Existing sealed manifest differs from sealed SQLite"
+            )
+    else:
+        _write_canonical(sealed_path, manifest)
+    return SealedCheckpointResult(
+        run_id,
+        months,
+        ledger,
+        matched,
+        unmatched,
+        manifest["relative_database_path"],
+        database_sha,
+        database_size,
         fingerprints,
     )
 
@@ -1069,22 +1501,16 @@ def read_sealed_month_fact(
     *,
     max_fact_bytes: int,
 ) -> pd.DataFrame:
-    if not isinstance(max_fact_bytes, int) or max_fact_bytes < 1:
-        raise ValueError("max_fact_bytes must be a positive integer")
+    _validate_max_fact_bytes(max_fact_bytes)
     verification = verify_sealed_supply_checkpoint(checkpoint_root, run_id)
     if month not in verification.months:
         raise ValueError("Unknown sealed month")
     _, database_path, sealed_path = _sealed_paths(checkpoint_root, run_id)
     sealed = _read_canonical(sealed_path)
-    entry = next(item for item in sealed["months"] if item["month"] == month)
-    estimated = int(entry["grain_count"]) * ESTIMATED_FACT_BYTES_PER_GRAIN
-    if estimated > max_fact_bytes:
-        raise CheckpointMemoryLimitError(
-            f"Month {month} estimated fact bytes {estimated} exceed limit {max_fact_bytes}"
-        )
-    uri = database_path.resolve().as_uri() + "?mode=ro"
-    connection = sqlite3.connect(uri, uri=True)
-    connection.row_factory = sqlite3.Row
+    summary = sealed["sealed_summary"]
+    entry = next(item for item in summary["months"] if item["month"] == month)
+    _raise_if_month_exceeds_limit(month, int(entry["grain_count"]), max_fact_bytes)
+    connection = _open_readonly_database(database_path)
     try:
         fact = _fact_for_month(connection, month, _read_canonical(_sealed_paths(checkpoint_root, run_id)[0])["supply"]["source_version"])
     finally:

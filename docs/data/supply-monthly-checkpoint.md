@@ -23,11 +23,12 @@ create_or_open_supply_monthly_checkpoint(
 ```python
 checkpoint.apply_classified_batch(batch, *, matched_mask)
 checkpoint.verify_active()
-checkpoint.seal(adapter_report=final_report)
+checkpoint.seal(adapter_report=final_report, max_fact_bytes=512 * 1024 * 1024)
 ```
 
 ```python
 verify_sealed_supply_checkpoint(checkpoint_root, run_id)
+finalize_sealed_supply_checkpoint(checkpoint_root, run_id)
 read_sealed_month_fact(
     checkpoint_root,
     run_id,
@@ -73,7 +74,9 @@ belong to PR-03B2B.
 - `grain_distinct_udi`: disk-backed distinct UDI state
 - `grain_distinct_day`: disk-backed distinct active-day state
 - `grain_quality_flag`: sorted, distinct upstream quality flags
-- `adapter_final_report`: one canonical report written only during seal
+- `sealed_summary`: one canonical summary and hash written only during seal;
+  includes the final adapter report, SQL row counts, bounded diagnostics,
+  month grain counts, and fact fingerprints
 
 The run-scoped supply source version is stored once in `run_metadata`. A
 validated `nids-row-v1:<64 lowercase hex>` ID is decoded losslessly into a
@@ -127,11 +130,35 @@ It blocks empty input, zero emitted rows, an empty ledger, all-unmatched input,
 accounting mismatch, lineage mismatch, source conflict, or reducer invariant
 failure. Months are never considered complete during streaming.
 
+Each open checkpoint instance counts physical rows only after a classified
+batch transaction commits. Replays and exact duplicates count toward this
+session coverage; rolled-back batches do not. Seal requires that count to equal
+the final adapter report's `rows_emitted`. Reopening a partial checkpoint
+therefore requires replaying the immutable source from the beginning before it
+can seal; ledger size is never used as a substitute for a complete source pass.
+
+`max_fact_bytes` is mandatory for seal. Every month's accumulator grain count
+is multiplied by the same conservative 4096-byte estimate used by the sealed
+reader before any month DataFrame is restored. An exceeded bound leaves the DB
+active and writes neither the sealed summary nor the sealed manifest, allowing
+an explicit retry with a larger bound.
+
 Seal restores one month at a time, validates it with the existing PR-01
 contract, and creates the same canonical fact fingerprint as one-shot PR-01
-aggregation. It then writes the final adapter report and sealed state, commits,
-runs `wal_checkpoint(TRUNCATE)`, closes SQLite, confirms sidecar cleanup, and
-writes the canonical sealed manifest. It does not run `VACUUM`.
+aggregation. It then writes the canonical sealed summary and sealed state in
+one transaction, commits, requires a non-busy `wal_checkpoint(TRUNCATE)`, closes
+SQLite, confirms sidecar cleanup, and writes the canonical sealed manifest. It
+does not run `VACUUM`.
+
+The sealed summary and its hash are inside SQLite and therefore covered by the
+closed database checksum. Manifest publication is a separate finalization
+step. If manifest writing fails, the sealed DB remains immutable;
+`finalize_sealed_supply_checkpoint()` opens it read-only and recreates only the
+manifest. An identical manifest is a no-op and a different existing manifest
+is a conflict. Finalization never replays source rows or changes accumulator
+state. A run manifest left alone by an interrupted first initialization may
+recreate its empty DB with the same lineage. An existing malformed DB is never
+deleted or overwritten automatically.
 
 After seal, SQLite and both manifests are immutable. The reader accepts only a
 verified sealed checkpoint and restores one requested month. Before loading,
