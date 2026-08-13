@@ -38,10 +38,10 @@ describe("Class 3 static shell", () => {
 
     const searchInputs = screen.getAllByRole("searchbox");
     expect(searchInputs).toHaveLength(1);
-    expect(screen.getByLabelText("품목군 또는 품목명 검색")).toBeDisabled();
-    expect(screen.getByPlaceholderText("품목군·품목명을 한 번에 검색하는 영역")).toBeDisabled();
-    expect(screen.getByLabelText("시작 월")).toBeDisabled();
-    expect(screen.getByLabelText("종료 월")).toBeDisabled();
+    expect(screen.getByLabelText("품목군 또는 품목명 검색")).toBeEnabled();
+    expect(screen.getByPlaceholderText("품목군·품목명을 한 번에 검색하는 영역")).toBeEnabled();
+    expect(screen.getByLabelText("시작 월")).toBeEnabled();
+    expect(screen.getByLabelText("종료 월")).toBeEnabled();
   });
 
   it("translates item contract types into public Korean labels", () => {

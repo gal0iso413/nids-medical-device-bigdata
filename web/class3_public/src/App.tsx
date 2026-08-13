@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
-import type { ReleaseStatus, SelectionType } from "./contracts/class3Mock";
+import { useEffect, useMemo, useState } from "react";
+import type {
+  ReleaseStatus,
+  SelectionItem,
+  SelectionType,
+} from "./contracts/class3Mock";
 import {
   resolveCurrentClass3PageState,
   type Class3PageState,
@@ -21,6 +25,11 @@ const selectionTypeLabels: Record<SelectionType, string> = {
 
 interface AppProps {
   initialState?: Class3PageState;
+}
+
+interface PeriodState {
+  startMonth: string;
+  endMonth: string;
 }
 
 function statusMessage(state: Class3PageState): string {
@@ -56,6 +65,20 @@ export default function App({ initialState }: AppProps) {
   const [state, setState] = useState<Class3PageState>(
     initialState ?? { kind: "loading", message: "화면 상태를 준비하는 중입니다." },
   );
+  const initialFixture = initialState?.kind === "fixture" ? initialState.fixture : undefined;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIsOpen, setSearchIsOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    initialFixture?.selection_summary.selections.map((selection) => selection.id) ?? [],
+  );
+  const [periodDraft, setPeriodDraft] = useState<PeriodState>({
+    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
+    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
+  });
+  const [appliedPeriod, setAppliedPeriod] = useState<PeriodState>({
+    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
+    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
+  });
 
   useEffect(() => {
     if (initialState) {
@@ -75,6 +98,68 @@ export default function App({ initialState }: AppProps) {
   }, [initialState]);
 
   const fixture = state.kind === "fixture" ? state.fixture : undefined;
+  const fixtureKey = fixture
+    ? `${fixture.data_version}:${fixture.release_status}:${fixture.view_state}`
+    : "no-fixture";
+
+  useEffect(() => {
+    if (!fixture) {
+      setSelectedIds([]);
+      setPeriodDraft({ startMonth: "", endMonth: "" });
+      setAppliedPeriod({ startMonth: "", endMonth: "" });
+      return;
+    }
+
+    const nextPeriod = {
+      startMonth: fixture.selection_summary.period.start_month,
+      endMonth: fixture.selection_summary.period.end_month,
+    };
+    setSelectedIds(fixture.selection_summary.selections.map((selection) => selection.id));
+    setPeriodDraft(nextPeriod);
+    setAppliedPeriod(nextPeriod);
+    setSearchQuery("");
+    setSearchIsOpen(false);
+  }, [fixtureKey]);
+
+  const candidateSelections = fixture?.selection_summary.selections ?? [];
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedSelections = candidateSelections.filter((selection) =>
+    selectedIdSet.has(selection.id),
+  );
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredCandidates = candidateSelections.filter((selection) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+    return [selection.label, selection.type, selectionTypeLabels[selection.type]]
+      .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+  });
+  const selectedResults = (fixture?.per_item_results ?? []).filter((result) =>
+    selectedIdSet.has(result.selection_id),
+  );
+  const selectedComposition = fixture?.portfolio_summary.released_composition?.entries
+    .filter((entry) => selectedIdSet.has(entry.selection_id)) ?? [];
+  const periodIsInvalid = Boolean(
+    periodDraft.startMonth
+      && periodDraft.endMonth
+      && periodDraft.startMonth > periodDraft.endMonth,
+  );
+  const periodCanApply = Boolean(
+    fixture
+      && periodDraft.startMonth
+      && periodDraft.endMonth
+      && !periodIsInvalid,
+  );
+
+  function addSelection(selection: SelectionItem) {
+    setSelectedIds((currentIds) =>
+      currentIds.includes(selection.id) ? currentIds : [...currentIds, selection.id],
+    );
+  }
+
+  function removeSelection(selection: SelectionItem) {
+    setSelectedIds((currentIds) => currentIds.filter((id) => id !== selection.id));
+  }
 
   return (
     <>
@@ -130,26 +215,83 @@ export default function App({ initialState }: AppProps) {
             <input
               type="search"
               placeholder="품목군·품목명을 한 번에 검색하는 영역"
-              aria-describedby="search-help"
-              disabled
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setSearchIsOpen(true);
+              }}
+              onFocus={() => setSearchIsOpen(true)}
+              aria-describedby="search-help search-status"
+              aria-controls="selection-search-results"
+              aria-expanded={searchIsOpen}
+              autoComplete="off"
+              disabled={!fixture}
             />
           </label>
           <p id="search-help" className="placeholder-note">
-            검색 상호작용은 후속 PR에서 연결합니다.
+            현재 synthetic fixture에 포함된 품목만 검색합니다.
           </p>
+          <p id="search-status" className="sr-only" aria-live="polite">
+            {searchIsOpen
+              ? `검색 결과 ${filteredCandidates.length}개`
+              : "검색 결과 닫힘"}
+          </p>
+          {fixture && searchIsOpen && (
+            <ul
+              id="selection-search-results"
+              className="search-results"
+              aria-label="품목 검색 결과"
+            >
+              {filteredCandidates.length ? (
+                filteredCandidates.map((selection) => {
+                  const isSelected = selectedIdSet.has(selection.id);
+                  return (
+                    <li key={selection.id}>
+                      <button
+                        type="button"
+                        className="search-result-button"
+                        onClick={() => addSelection(selection)}
+                        disabled={isSelected}
+                      >
+                        <span className="type-badge">
+                          {selectionTypeLabels[selection.type]}
+                        </span>
+                        <span className="synthetic-label">{selection.label}</span>
+                        <span className="search-result-state">
+                          {isSelected ? "선택됨" : "선택"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })
+              ) : (
+                <li className="search-empty" role="status">
+                  fixture 안에서 일치하는 품목을 찾지 못했습니다.
+                </li>
+              )}
+            </ul>
+          )}
         </section>
 
         <div className="filter-strip">
           <section className="selection-panel" aria-labelledby="selection-heading">
             <h2 id="selection-heading">선택 품목</h2>
-            {fixture ? (
+            {selectedSelections.length ? (
               <ul className="selection-list">
-                {fixture.selection_summary.selections.map((selection) => (
+                {selectedSelections.map((selection) => (
                   <li key={selection.id}>
                     <span className="type-badge">
                       {selectionTypeLabels[selection.type]}
                     </span>
                     <span className="synthetic-label">{selection.label}</span>
+                    <button
+                      type="button"
+                      className="remove-selection"
+                      onClick={() => removeSelection(selection)}
+                      aria-label={`${selection.label} 선택 제거`}
+                    >
+                      제거
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -165,21 +307,48 @@ export default function App({ initialState }: AppProps) {
                 시작 월
                 <input
                   type="month"
-                  value={fixture?.selection_summary.period.start_month ?? ""}
-                  readOnly
-                  disabled
+                  value={periodDraft.startMonth}
+                  onChange={(event) => setPeriodDraft((current) => ({
+                    ...current,
+                    startMonth: event.target.value,
+                  }))}
+                  aria-invalid={periodIsInvalid}
+                  aria-describedby={periodIsInvalid ? "period-error" : undefined}
+                  disabled={!fixture}
                 />
               </label>
               <label>
                 종료 월
                 <input
                   type="month"
-                  value={fixture?.selection_summary.period.end_month ?? ""}
-                  readOnly
-                  disabled
+                  value={periodDraft.endMonth}
+                  onChange={(event) => setPeriodDraft((current) => ({
+                    ...current,
+                    endMonth: event.target.value,
+                  }))}
+                  aria-invalid={periodIsInvalid}
+                  aria-describedby={periodIsInvalid ? "period-error" : undefined}
+                  disabled={!fixture}
                 />
               </label>
             </div>
+            {periodIsInvalid && (
+              <p id="period-error" className="field-error" role="alert">
+                시작 월은 종료 월보다 늦을 수 없습니다.
+              </p>
+            )}
+            <button
+              type="button"
+              className="period-apply"
+              disabled={!periodCanApply}
+              onClick={() => setAppliedPeriod(periodDraft)}
+            >
+              기간 적용
+            </button>
+            <p className="period-note" aria-live="polite">
+              화면 비교 범위: {appliedPeriod.startMonth || "미설정"} ~ {appliedPeriod.endMonth || "미설정"}
+              <span>기간을 바꿔도 mock 분석값은 재계산하지 않습니다.</span>
+            </p>
           </section>
         </div>
 
@@ -188,9 +357,9 @@ export default function App({ initialState }: AppProps) {
             <p className="section-kicker">품목별 보기</p>
             <h2 id="comparison-heading">품목별 비교 결과</h2>
           </div>
-          {fixture?.per_item_results.length ? (
+          {selectedResults.length ? (
             <div className="card-grid">
-              {fixture.per_item_results.map((result) => (
+              {selectedResults.map((result) => (
                 <article className="result-card" key={result.selection_id}>
                   <div className="result-card__header">
                     <h3>{selectionTypeLabels[result.selection_type]}</h3>
@@ -200,12 +369,21 @@ export default function App({ initialState }: AppProps) {
                   </div>
                   <p className="synthetic-label">{result.selection_id}</p>
                   <p>{result.notice}</p>
+                  {result.released_content && (
+                    <dl className="released-content">
+                      <div><dt>보고된 거래 활동</dt><dd>{result.released_content.activity_label}</dd></div>
+                      <div><dt>공급 수량</dt><dd>{result.released_content.quantity_label}</dd></div>
+                      <div><dt>월별 추세</dt><dd>{result.released_content.trend_label}</dd></div>
+                    </dl>
+                  )}
                 </article>
               ))}
             </div>
           ) : (
             <p className="empty-copy empty-copy--prominent">
-              {fixture?.view_state === "empty"
+              {!selectedSelections.length
+                ? "선택된 품목이 없습니다. 검색 결과에서 품목을 선택해 주세요."
+                : fixture?.view_state === "empty"
                 ? "조건에 맞는 결과가 없습니다."
                 : "비교 결과를 제공할 수 없습니다."}
             </p>
@@ -218,8 +396,25 @@ export default function App({ initialState }: AppProps) {
             <h2 id="trend-heading">월별 추세</h2>
           </div>
           <div className="placeholder-panel" aria-label="월별 추세 시각화 자리">
-            <strong>월별 추세 영역</strong>
-            <span>차트 라이브러리 없이 상태와 영역만 정의합니다.</span>
+            <strong>향후 monthly series 연결 영역</strong>
+            {selectedResults.length ? (
+              <ul className="trend-list">
+                {selectedResults.map((result) => (
+                  <li key={result.selection_id}>
+                    <span className="type-badge">{selectionTypeLabels[result.selection_type]}</span>
+                    <span className="synthetic-label">{result.selection_id}</span>
+                    {result.released_content ? (
+                      <span>{result.released_content.trend_label}</span>
+                    ) : (
+                      <span>{statusLabels[result.release_status]} — {result.notice}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span>선택된 품목의 추세 표시가 없습니다.</span>
+            )}
+            <span className="placeholder-note">실제 월별 series나 가짜 선 그래프는 포함하지 않습니다.</span>
           </div>
         </section>
 
@@ -231,8 +426,19 @@ export default function App({ initialState }: AppProps) {
               {fixture?.portfolio_summary.notice ??
                 "포트폴리오 데이터가 연결되지 않았습니다."}
             </p>
+            {selectedComposition.length > 0 && (
+              <ul className="composition-list">
+                {selectedComposition.map((entry) => (
+                  <li key={entry.selection_id}>
+                    <span className="synthetic-label">{entry.selection_id}</span>
+                    <span>{entry.share_label}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="placeholder-note">
-              품목별 수량과 집중도 지표를 서로 합산하지 않습니다.
+              {fixture?.portfolio_summary.released_composition?.non_additive_notice
+                ?? "품목별 수량과 집중도 지표를 서로 합산하지 않습니다."}
             </p>
           </section>
 
@@ -244,7 +450,17 @@ export default function App({ initialState }: AppProps) {
                 "관측된 도달 구조 데이터가 연결되지 않았습니다."}
             </p>
             <div className="reach-placeholder" aria-label="관측된 유통 도달 구조 자리">
-              최종단 추적이 아닌 관측된 다음 단계의 구조를 표시할 영역입니다.
+              <p>최종단 추적이 아닌 관측된 다음 단계의 구조를 표시할 영역입니다.</p>
+              {fixture?.observed_reach.released_stages && (
+                <ul className="reach-list">
+                  {fixture.observed_reach.released_stages.map((stage) => (
+                    <li key={stage.stage_label}>
+                      <span>{stage.stage_label}</span>
+                      <span>{stage.display_label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </section>
         </div>
