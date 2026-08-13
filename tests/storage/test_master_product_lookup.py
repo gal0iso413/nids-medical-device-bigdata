@@ -20,6 +20,7 @@ from data_pipeline.ingest import SOURCE_BATCH_COLUMNS
 from data_pipeline.storage import master_product_lookup as lookup_module
 from data_pipeline.storage.master_product_lookup import (
     DATABASE_FILENAME,
+    EmptyMasterLookupError,
     MANIFEST_FILENAME,
     MasterLookupConflictError,
     MasterLookupIntegrityError,
@@ -40,6 +41,11 @@ from data_pipeline.storage.master_product_lookup import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TEMP_PARENT = Path(tempfile.gettempdir())
 MASTER_HEADERS = ["의료기기품목일련번호", "모델일련번호", "UDIDI일련번호", "ignored"]
+MOJIBAKE_HEADERS = [
+    "?\uc10e\uc9ba\u6e72\uaccc\ub9b0?\ub348\u3049?\uc1f0\uc834\u8e30\ub34a\uc0c7",
+    "\uf9cf\u2464\ub73d?\uc1f0\uc834\u8e30\ub34a\uc0c7",
+    "UDIDI?\uc1f0\uc834\u8e30\ub34a\uc0c7",
+]
 
 
 def write_master(
@@ -142,6 +148,23 @@ class MasterProductLookupTests(unittest.TestCase):
         discovered = discover_master_sheets(self.master_path)
         self.assertEqual([sheet.name for sheet in discovered], ["a-sheet", "m-sheet", "z-sheet"])
         self.assertTrue(all(sheet.header_row == 2 for sheet in discovered))
+
+    def test_only_confirmed_utf8_master_headers_are_supported(self) -> None:
+        self.assertEqual(
+            lookup_module.MASTER_HEADER_ALIASES,
+            {
+                "item_serial": ("의료기기품목일련번호",),
+                "model_serial": ("모델일련번호",),
+                "udi_serial": ("UDIDI일련번호",),
+            },
+        )
+        self.assertEqual(len(discover_master_sheets(self.master_path)), 3)
+
+    def test_mojibake_headers_are_not_treated_as_supported_aliases(self) -> None:
+        path = self.temp_dir / "mojibake.xlsx"
+        write_master(path, [("data", [MOJIBAKE_HEADERS, [1, 2, 3]])])
+        with self.assertRaises(MasterSheetDiscoveryError):
+            discover_master_sheets(path)
 
     def test_missing_key_header_is_rejected_before_data_rows(self) -> None:
         path = self.temp_dir / "missing.xlsx"
@@ -269,6 +292,32 @@ class MasterProductLookupTests(unittest.TestCase):
         self.assertEqual(len(result.invalid_key_locations), 20)
         self.assertEqual(result.invalid_key_omitted, 5)
 
+    def test_header_only_master_is_not_published(self) -> None:
+        path = self.temp_dir / "header-only.xlsx"
+        write_master(path, [("data", [["metadata"], MASTER_HEADERS])])
+        lineage = create_master_lineage([path])
+        with self.assertRaises(EmptyMasterLookupError):
+            build_master_product_lookup([path], self.lookup_root)
+        self.assertFalse(self.final_dir(lineage.source_hash).exists())
+        self.assertEqual(
+            list((self.lookup_root / "master_product_lookup").glob(".lookup.tmp-*")),
+            [],
+        )
+
+    def test_all_invalid_master_rows_are_not_published(self) -> None:
+        path = self.temp_dir / "all-invalid.xlsx"
+        write_master(
+            path,
+            [("data", [MASTER_HEADERS, [None, 2, 3], [1, 1.5, 3], [1, 2, None]])],
+        )
+        lineage = create_master_lineage([path])
+        with self.assertRaises(EmptyMasterLookupError):
+            build_master_product_lookup([path], self.lookup_root)
+        self.assertFalse(self.final_dir(lineage.source_hash).exists())
+        staging_root = self.lookup_root / "master_product_lookup"
+        self.assertEqual(list(staging_root.glob(".lookup.tmp-*")), [])
+        self.assertEqual(list(staging_root.rglob("*.sqlite")), [])
+
     def test_identical_rerun_is_unchanged_and_does_not_rewrite(self) -> None:
         first = self.build()
         database = self.final_dir(first.source_hash) / DATABASE_FILENAME
@@ -285,6 +334,24 @@ class MasterProductLookupTests(unittest.TestCase):
         self.assertFalse(self.final_dir(lineage.source_hash).exists())
         staging_root = self.lookup_root / "master_product_lookup"
         self.assertEqual(list(staging_root.glob(".lookup.tmp-*")), [])
+
+    def test_staging_directory_creation_oserror_is_typed(self) -> None:
+        lineage = create_master_lineage([self.master_path])
+        original_mkdir = Path.mkdir
+
+        def fail_staging(path: Path, *args: object, **kwargs: object) -> None:
+            if path.name.startswith(".lookup.tmp-"):
+                raise OSError("synthetic staging failure")
+            original_mkdir(path, *args, **kwargs)
+
+        with patch.object(Path, "mkdir", new=fail_staging):
+            with self.assertRaises(MasterLookupStorageError):
+                self.build()
+        self.assertFalse(self.final_dir(lineage.source_hash).exists())
+        self.assertEqual(
+            list((self.lookup_root / "master_product_lookup").glob(".lookup.tmp-*")),
+            [],
+        )
 
     def test_changed_source_gets_distinct_immutable_path(self) -> None:
         first = self.build()
@@ -372,6 +439,39 @@ class MasterProductLookupTests(unittest.TestCase):
                 )
         self.assertEqual(joined.matched_rows.index.tolist(), [0, 1])
         self.assertEqual(joined.report.rows_matched, 2)
+
+    def test_repeated_joins_leave_no_transaction_or_temp_table(self) -> None:
+        result = self.build()
+        batch = supply_batch([(1, 10, 100), (99, 99, 99)])
+        with open_master_product_lookup(self.lookup_root, result.source_hash) as lookup:
+            for _ in range(3):
+                joined = lookup.join_supply_batch(batch)
+                self.assertEqual(joined.report.rows_matched, 1)
+                self.assertFalse(lookup._connection.in_transaction)
+                temp_tables = lookup._connection.execute(
+                    "SELECT name FROM sqlite_temp_master "
+                    "WHERE type='table' AND name LIKE 'batch_product_key_%'"
+                ).fetchall()
+                self.assertEqual(temp_tables, [])
+
+    def test_join_sql_error_rolls_back_and_removes_temp_table(self) -> None:
+        result = self.build()
+        batch = supply_batch([(1, 10, 100)])
+        with open_master_product_lookup(self.lookup_root, result.source_hash) as lookup:
+            with patch.object(
+                lookup_module,
+                "_select_matching_batch_positions",
+                side_effect=sqlite3.OperationalError("synthetic join failure"),
+            ):
+                with self.assertRaises(SupplyBatchJoinError):
+                    lookup.join_supply_batch(batch)
+            self.assertFalse(lookup._connection.in_transaction)
+            temp_tables = lookup._connection.execute(
+                "SELECT name FROM sqlite_temp_master "
+                "WHERE type='table' AND name LIKE 'batch_product_key_%'"
+            ).fetchall()
+            self.assertEqual(temp_tables, [])
+            self.assertEqual(lookup.join_supply_batch(batch).report.rows_matched, 1)
 
     def test_join_rejects_non_exact_schema_multiple_versions_and_incomplete_keys(self) -> None:
         result = self.build()

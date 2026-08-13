@@ -39,12 +39,9 @@ PRODUCT_KEY_COLUMNS: Final[tuple[str, str, str]] = (
     "udi_serial",
 )
 MASTER_HEADER_ALIASES: Final[dict[str, tuple[str, ...]]] = {
-    "item_serial": (
-        "?섎즺湲곌린?덈ぉ?쇰젴踰덊샇",
-        "의료기기품목일련번호",
-    ),
-    "model_serial": ("紐⑤뜽?쇰젴踰덊샇", "모델일련번호"),
-    "udi_serial": ("UDIDI?쇰젴踰덊샇", "UDIDI일련번호", "UDI-DI 일련번호"),
+    "item_serial": ("의료기기품목일련번호",),
+    "model_serial": ("모델일련번호",),
+    "udi_serial": ("UDIDI일련번호",),
 }
 SQLITE_TABLE_SQL: Final = """CREATE TABLE product_key(
     item_serial TEXT NOT NULL,
@@ -95,6 +92,10 @@ class MasterSourceSnapshotError(MasterProductLookupError):
 
 class MasterLookupStorageError(MasterProductLookupError):
     """Raised for filesystem or SQLite I/O failures."""
+
+
+class EmptyMasterLookupError(MasterProductLookupError):
+    """Raised when a discovered master source contains no valid product key."""
 
 
 class MasterLookupConflictError(MasterProductLookupError):
@@ -741,6 +742,10 @@ def _write_candidate_lookup(
         stream.report.duplicate_key_rows = (
             stream.report.valid_key_rows - stream.report.unique_key_count
         )
+        if stream.report.unique_key_count == 0:
+            raise EmptyMasterLookupError(
+                "Master source contains no valid official three-key product identity"
+            )
         connection.commit()
         connection.execute("VACUUM")
     except sqlite3.Error as exc:
@@ -815,7 +820,12 @@ def build_master_product_lookup(
     # extra full source hash before the atomic move into the contracted path.
     temp_dir = staging_root / f".lookup.tmp-{secrets.token_hex(8)}"
     try:
-        temp_dir.mkdir()
+        try:
+            temp_dir.mkdir()
+        except OSError as exc:
+            raise MasterLookupStorageError(
+                "Could not create master lookup staging directory"
+            ) from exc
         manifest = _write_candidate_lookup(
             workbook_paths,
             lineage,
@@ -829,6 +839,20 @@ def build_master_product_lookup(
         return _result_from_manifest("written" if published else "unchanged", manifest)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _select_matching_batch_positions(
+    connection: sqlite3.Connection,
+    table: str,
+) -> list[int]:
+    return [
+        int(row[0])
+        for row in connection.execute(
+            f"SELECT b.position FROM {table} b "
+            "JOIN product_key p USING(item_serial, model_serial, udi_serial) "
+            "ORDER BY b.position"
+        )
+    ]
 
 
 class MasterProductLookup:
@@ -881,6 +905,7 @@ class MasterProductLookup:
             normalized_keys.append(normalized)  # type: ignore[arg-type]
         table = f"batch_product_key_{secrets.token_hex(8)}"
         try:
+            self._connection.execute("BEGIN")
             self._connection.execute(
                 f"CREATE TEMP TABLE {table}(position INTEGER PRIMARY KEY, item_serial TEXT NOT NULL, model_serial TEXT NOT NULL, udi_serial TEXT NOT NULL)"
             )
@@ -891,19 +916,35 @@ class MasterProductLookup:
                     for position, key in enumerate(normalized_keys)
                 ),
             )
-            matched_positions = [
-                int(row[0])
-                for row in self._connection.execute(
-                    f"SELECT b.position FROM {table} b JOIN product_key p USING(item_serial, model_serial, udi_serial) ORDER BY b.position"
-                )
-            ]
+            matched_positions = _select_matching_batch_positions(
+                self._connection, table
+            )
+            self._connection.execute(f"DROP TABLE {table}")
+            self._connection.commit()
         except sqlite3.Error as exc:
-            raise SupplyBatchJoinError("Could not join supply batch to master lookup") from exc
-        finally:
+            cleanup_errors: list[sqlite3.Error] = []
+            try:
+                if self._connection.in_transaction:
+                    self._connection.rollback()
+            except sqlite3.Error as cleanup_exc:
+                cleanup_errors.append(cleanup_exc)
             try:
                 self._connection.execute(f"DROP TABLE IF EXISTS {table}")
-            except sqlite3.Error:
-                pass
+                if self._connection.in_transaction:
+                    self._connection.commit()
+            except sqlite3.Error as cleanup_exc:
+                cleanup_errors.append(cleanup_exc)
+                try:
+                    if self._connection.in_transaction:
+                        self._connection.rollback()
+                except sqlite3.Error as rollback_exc:
+                    cleanup_errors.append(rollback_exc)
+            error = SupplyBatchJoinError("Could not join supply batch to master lookup")
+            for cleanup_error in cleanup_errors:
+                error.add_note(
+                    f"Temporary batch cleanup also failed: {cleanup_error.__class__.__name__}"
+                )
+            raise error from exc
         matched_set = set(matched_positions)
         unmatched_positions = (
             position for position in range(len(batch)) if position not in matched_set

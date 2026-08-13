@@ -14,6 +14,7 @@ from .monthly_fact_parquet import (
     write_monthly_fact_partitions,
 )
 from .master_product_lookup import (
+    EmptyMasterLookupError,
     MasterDiscoveredSheet,
     MasterIngestionReport,
     MasterKeyStream,
@@ -52,6 +53,7 @@ __all__ = [
     "read_monthly_fact_partitions",
     "verify_monthly_fact_partition",
     "write_monthly_fact_partitions",
+    "EmptyMasterLookupError",
     "MasterDiscoveredSheet",
     "MasterIngestionReport",
     "MasterKeyStream",
