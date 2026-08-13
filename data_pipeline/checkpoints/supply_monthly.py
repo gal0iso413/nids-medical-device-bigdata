@@ -247,6 +247,19 @@ def _run_payload(
     }
 
 
+def derive_supply_monthly_run_id(
+    supply_lineage: SourceLineage,
+    master_verification: MasterLookupVerification,
+) -> str:
+    """Derive the existing checkpoint run ID without duplicating its formula."""
+
+    return str(
+        _manifest_with_run_id(
+            _run_payload(supply_lineage, master_verification)
+        )["run_id"]
+    )
+
+
 def _manifest_with_run_id(payload: dict[str, Any]) -> dict[str, Any]:
     run_id = _sha256_bytes(_canonical_json_bytes(payload))
     return {**payload, "run_id": run_id}
