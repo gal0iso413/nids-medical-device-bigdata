@@ -32,6 +32,7 @@ _RATE_SCALE = Decimal("0.000001")
 _LOG_CLIP_MAX = Decimal("1e100")
 _BC_DEFAULTS = {
     "minimum_reachable_pairs": 1,
+    "minimum_role_sample": 30,
     "exact_pair_limit": 10_000,
     "maximum_pair_limit": 100_000,
     "sample_pairs": 10_000,
@@ -388,12 +389,18 @@ def build_bc_evidence(
     entity_metadata: dict[str, dict[str, Any]],
     *,
     minimum_reachable_pairs: int = _BC_DEFAULTS["minimum_reachable_pairs"],
+    minimum_role_sample: int = _BC_DEFAULTS["minimum_role_sample"],
     exact_pair_limit: int = _BC_DEFAULTS["exact_pair_limit"],
     maximum_pair_limit: int = _BC_DEFAULTS["maximum_pair_limit"],
     sample_pairs: int = _BC_DEFAULTS["sample_pairs"],
     seed: int = 0,
 ) -> dict[str, dict[str, Any]]:
-    """Compute fractional shortest-path gateway evidence, never a risk band."""
+    """Compute fractional shortest-path gateway evidence, never a risk band.
+
+    The implementation uses shortest-path dependencies rather than enumerating
+    paths.  A layered diamond can have exponentially many shortest paths, but
+    this remains bounded by the participating shortest-path DAG.
+    """
     network = nx.DiGraph()
     network.add_nodes_from(range(len(graph.nodes)))
     network.add_edges_from(zip(*model_edge_index(graph)))
@@ -420,16 +427,13 @@ def build_bc_evidence(
     reachable_targets = {index: set() for index in range(len(graph.nodes))}
     if mode != "deferred_too_large":
         for source, target in selected_pairs:
-            try:
-                paths = list(nx.all_shortest_paths(network, source, target))
-            except nx.NetworkXNoPath:
+            dependencies = _shortest_path_dependencies(network, source, target)
+            if dependencies is None:
                 continue
             reachable_pairs += 1
-            fraction = Decimal(1) / Decimal(len(paths))
-            for path in paths:
-                for gateway in path[1:-1]:
-                    credit[gateway] += fraction
-                    reachable_targets[gateway].add(target)
+            for gateway, fraction in dependencies.items():
+                credit[gateway] += fraction
+                reachable_targets[gateway].add(target)
     components = {}
     for component in nx.weakly_connected_components(network):
         for index in component:
@@ -441,8 +445,10 @@ def build_bc_evidence(
         else "below_minimum_reachable_pairs" if insufficient else None
     )
     denominator = Decimal(reachable_pairs) if reachable_pairs else Decimal(1)
-    return {
+    evidence = {
         node: {
+            "anchor_month": graph.anchor_month,
+            "role_group": entity_metadata.get(node, {}).get("role_group", "unknown"),
             "bc_raw": credit[index],
             "gateway_share": (credit[index] / denominator),
             "weak_component_size": components.get(index, 1),
@@ -454,6 +460,87 @@ def build_bc_evidence(
         }
         for index, node in enumerate(graph.nodes)
     }
+    _add_bc_role_rankings(evidence, minimum_role_sample=minimum_role_sample)
+    return evidence
+
+
+def _shortest_path_dependencies(
+    network: nx.DiGraph, source: int, target: int,
+) -> dict[int, Decimal] | None:
+    """Return fractional shortest-path dependencies without materializing paths."""
+    try:
+        distance = nx.shortest_path_length(network, source, target)
+    except nx.NetworkXNoPath:
+        return None
+    from_source = nx.single_source_shortest_path_length(network, source, cutoff=distance)
+    to_target = nx.single_source_shortest_path_length(
+        network.reverse(copy=False), target, cutoff=distance,
+    )
+    layers: dict[int, list[int]] = {}
+    for node, node_distance in from_source.items():
+        if node_distance + to_target.get(node, distance + 1) == distance:
+            layers.setdefault(node_distance, []).append(node)
+    for nodes in layers.values():
+        nodes.sort()
+    forward = {source: 1}
+    for layer in range(distance):
+        for node in layers.get(layer, []):
+            for successor in network.successors(node):
+                if successor in from_source and from_source[successor] == layer + 1 and successor in to_target:
+                    if from_source[successor] + to_target[successor] == distance:
+                        forward[successor] = forward.get(successor, 0) + forward.get(node, 0)
+    path_count = forward.get(target, 0)
+    if path_count == 0:
+        return None
+    backward = {target: 1}
+    for layer in range(distance - 1, -1, -1):
+        for node in layers.get(layer, []):
+            backward[node] = sum(
+                backward.get(successor, 0)
+                for successor in network.successors(node)
+                if successor in from_source
+                and from_source[successor] == layer + 1
+                and successor in to_target
+                and from_source[successor] + to_target[successor] == distance
+            )
+    return {
+        node: Decimal(forward.get(node, 0)) * Decimal(backward.get(node, 0)) / Decimal(path_count)
+        for node in range(len(network))
+        if node not in {source, target} and node in forward and node in backward
+    }
+
+
+def _add_bc_role_rankings(
+    evidence: dict[str, dict[str, Any]], *, minimum_role_sample: int,
+) -> None:
+    """Attach role-group rank/percentile only where BC evidence is sufficient."""
+    frame = pd.DataFrame.from_dict(evidence, orient="index")
+    for column in (
+        "bc_role_group_sample_size", "bc_rank", "bc_percentile",
+        "bc_insufficient_sample", "bc_rank_reason",
+    ):
+        for value in evidence.values():
+            value[column] = None
+    eligible = frame.loc[~frame["insufficient_evidence"]]
+    for _, group in eligible.groupby(["anchor_month", "role_group"], sort=True):
+        sample_size = len(group)
+        for entity_id in group.index:
+            evidence[entity_id]["bc_role_group_sample_size"] = sample_size
+        if sample_size < minimum_role_sample:
+            for entity_id in group.index:
+                evidence[entity_id]["bc_insufficient_sample"] = True
+                evidence[entity_id]["bc_rank_reason"] = "role_group_below_minimum_sample"
+            continue
+        ranks = group["bc_raw"].rank(method="average", ascending=False)
+        percentiles = group["bc_raw"].rank(method="average", pct=True, ascending=True) * 100
+        for entity_id in group.index:
+            evidence[entity_id]["bc_rank"] = float(ranks.loc[entity_id])
+            evidence[entity_id]["bc_percentile"] = float(percentiles.loc[entity_id])
+            evidence[entity_id]["bc_insufficient_sample"] = False
+    for entity_id, value in evidence.items():
+        if value["insufficient_evidence"]:
+            value["bc_insufficient_sample"] = True
+            value["bc_rank_reason"] = value["reason"]
 
 
 def _fingerprint(value: Any) -> str:
@@ -486,7 +573,9 @@ def build_class1_pipeline(
     })
     ranked = role_percentiles(qa, minimum_sample=minimum_role_sample)
     previous, nonoverlap = build_anchor_diffs(fact, anchor_month=anchor_month, entities=graph.nodes)
-    bc = build_bc_evidence(graph, metadata, seed=seed)
+    bc = build_bc_evidence(
+        graph, metadata, seed=seed, minimum_role_sample=minimum_role_sample,
+    )
     service = ranked.drop(columns=["raw_score"]).copy()
     service["window_months"] = [graph.window_months] * len(service)
     service["model"] = "gadnr"
@@ -496,7 +585,7 @@ def build_class1_pipeline(
     ] * len(service)
     service["previous_anchor_diff"] = [previous[node] for node in graph.nodes]
     service["prior_nonoverlap_3m_diff"] = [nonoverlap[node] for node in graph.nodes]
-    service["bc_evidence"] = [bc[node] for node in graph.nodes]
+    service["bc_evidence"] = [_service_bc_evidence(bc[node]) for node in graph.nodes]
     manifest = {
         "analysis_schema_version": PIPELINE_SCHEMA_VERSION,
         "primary_model": "gadnr", "model_version": model_version,
@@ -525,6 +614,11 @@ def build_class1_pipeline(
     })
     manifest["manifest_fingerprint"] = _fingerprint(manifest)
     return Class1PipelineResult(graph, features, ranked, service, previous, nonoverlap, bc, manifest)
+
+
+def _service_bc_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Keep raw BC in QA evidence only; service gets relative evidence/status."""
+    return {key: value for key, value in evidence.items() if key != "bc_raw"}
 
 
 def _json_value(value: Any) -> Any:

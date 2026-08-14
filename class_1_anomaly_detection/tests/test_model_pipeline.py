@@ -148,10 +148,12 @@ class ModelPipelineTests(unittest.TestCase):
         ])
         graph = build_model_graph(f, anchor_month="202401")
         _, manifest = build_gadnr_features(f, graph, region_vocabulary=())
-        evidence = build_bc_evidence(graph, manifest["entity_metadata"])
+        evidence = build_bc_evidence(graph, manifest["entity_metadata"], minimum_role_sample=1)
         self.assertEqual(evidence["g1"]["gateway_share"], Decimal("0.5"))
         self.assertEqual(evidence["g1"]["weak_component_size"], 4)
         self.assertFalse(evidence["g1"]["insufficient_evidence"])
+        self.assertEqual(evidence["g1"]["bc_rank"], 1.5)
+        self.assertEqual(evidence["g1"]["bc_percentile"], 75.0)
         none = build_bc_evidence(graph, {node: {"role_group": "unknown"} for node in graph.nodes})
         self.assertTrue(none["g1"]["insufficient_evidence"])
         self.assertEqual(none["g1"]["reason"], "no_reachable_source_target_pairs")
@@ -174,6 +176,47 @@ class ModelPipelineTests(unittest.TestCase):
         deferred = build_bc_evidence(graph, manifest["entity_metadata"], maximum_pair_limit=1)
         self.assertEqual(deferred["g"]["mode"], "deferred_too_large")
         self.assertEqual(deferred["g"]["reason"], "graph_too_large")
+
+    def test_bc_dependency_handles_exponentially_many_diamond_paths_without_enumerating(self):
+        levels = 24
+        nodes = ["source"] + [f"n{level}_{side}" for level in range(levels) for side in range(2)] + ["target"]
+        edges = []
+        for side in range(2):
+            edges.append({"src_company_id": "source", "dst_company_id": f"n0_{side}"})
+        for level in range(levels - 1):
+            for left in range(2):
+                for right in range(2):
+                    edges.append({"src_company_id": f"n{level}_{left}", "dst_company_id": f"n{level + 1}_{right}"})
+        for side in range(2):
+            edges.append({"src_company_id": f"n{levels - 1}_{side}", "dst_company_id": "target"})
+        graph = ModelGraph("202401", ("202401",), tuple(nodes), pd.DataFrame(edges), 0)
+        metadata = {node: {"role_group": "distributor"} for node in nodes}
+        metadata["source"] = {"role_group": "manufacturer"}
+        metadata["target"] = {"role_group": "hospital"}
+        evidence = build_bc_evidence(graph, metadata, minimum_role_sample=2)
+        self.assertEqual(evidence["n12_0"]["gateway_share"], Decimal("0.5"))
+        self.assertEqual(evidence["n12_0"]["mode"], "exact")
+
+    def test_bc_role_rankings_are_separate_from_gadnr_features_and_raw_stays_qa_only(self):
+        f = fact([
+            row("202401", "s", "g1", "1", src_role="manufacturer", dst_role="distributor"),
+            row("202401", "s", "g2", "2", src_role="manufacturer", dst_role="distributor"),
+            row("202401", "g1", "t", "3", src_role="distributor", dst_role="hospital"),
+            row("202401", "g2", "t", "4", src_role="distributor", dst_role="hospital"),
+        ])
+        graph = build_model_graph(f, anchor_month="202401")
+        features, manifest = build_gadnr_features(f, graph, region_vocabulary=())
+        evidence = build_bc_evidence(graph, manifest["entity_metadata"], minimum_role_sample=2)
+        self.assertEqual(evidence["g1"]["bc_role_group_sample_size"], 2)
+        self.assertEqual(evidence["g1"]["bc_rank"], 1.5)
+        self.assertEqual(evidence["g1"]["bc_percentile"], 75.0)
+        self.assertNotIn("bc_rank", features.columns)
+        self.assertNotIn("bc_percentile", features.columns)
+        result = build_class1_pipeline(f, anchor_month="202401", model_version="m1",
+                                       scorer=lambda x, edge: [0.0] * len(x),
+                                       minimum_role_sample=2, region_vocabulary=())
+        self.assertIn("bc_raw", result.bc_evidence["g1"])
+        self.assertNotIn("bc_raw", result.service_results.iloc[0].bc_evidence)
 
     def test_pipeline_manifest_service_serializer_are_deterministic_and_hide_raw(self):
         f = fact([row("202401", "a", "b", src_role="manufacturer")])
