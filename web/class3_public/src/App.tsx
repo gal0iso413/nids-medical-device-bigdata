@@ -43,14 +43,26 @@ interface LocalSelectionItem extends SelectionItem {
 function localPeriod(analysis: Class3AnalysisPayload): PeriodState {
   const summaries = analysis.selection_coverage_summary;
   return {
-    startMonth: summaries.map((summary) => summary.period_start).sort()[0] ?? "",
-    endMonth: summaries.map((summary) => summary.period_end).sort().at(-1) ?? "",
+    startMonth: payloadMonthToInputMonth(
+      summaries.map((summary) => summary.period_start).sort()[0] ?? "",
+    ),
+    endMonth: payloadMonthToInputMonth(
+      summaries.map((summary) => summary.period_end).sort().at(-1) ?? "",
+    ),
   };
 }
 
+function payloadMonthToInputMonth(value: string): string {
+  return /^\d{6}$/.test(value) ? `${value.slice(0, 4)}-${value.slice(4)}` : "";
+}
+
+function inputMonthToPayloadMonth(value: string): string {
+  return /^\d{4}-\d{2}$/.test(value) ? value.replace("-", "") : "";
+}
+
 function isMonthInPeriod(month: string, period: PeriodState): boolean {
-  const start = period.startMonth.replace("-", "");
-  const end = period.endMonth.replace("-", "");
+  const start = inputMonthToPayloadMonth(period.startMonth);
+  const end = inputMonthToPayloadMonth(period.endMonth);
   return (!start || month >= start) && (!end || month <= end);
 }
 
@@ -504,13 +516,13 @@ export default function App({ initialState }: AppProps) {
           </div>
           <div className="placeholder-panel" aria-label="월별 추세 시각화 자리">
             <strong>향후 monthly series 연결 영역</strong>
-            {localAnalysis && localComposition.length ? (
+            {localAnalysis && localMetrics.length ? (
               <ul className="trend-list">
-                {localComposition.map((entry) => (
-                  <li key={`${entry.selection_id}:${entry.month}:${entry.dimension}:${entry.dimension_value}`}>
-                    <span>{entry.month} · {entry.dimension}</span>
-                    <span>{entry.dimension_value}{entry.is_unknown ? " (unknown)" : ""}</span>
-                    <span>{entry.endpoint_count ?? "없음"} / {entry.denominator_endpoint_count ?? "없음"} · {decimalDisplay(entry.endpoint_share)} · flags: {entry.quality_flags || "없음"}</span>
+                {localMetrics.map((metric) => (
+                  <li key={`${metric.selection_id}:${metric.month}`}>
+                    <span>{metric.month} · {selectionTypeLabels[metric.selection_type]}</span>
+                    <span className="synthetic-label">{metric.selection_id}</span>
+                    <span>거래 {metric.tx_count ?? "없음"}건 · 공급금액 {decimalDisplay(metric.amount_sum_clean)}</span>
                   </li>
                 ))}
               </ul>
@@ -533,7 +545,7 @@ export default function App({ initialState }: AppProps) {
             )}
             <span className="placeholder-note">
               {localAnalysis
-                ? "이는 관측된 공급자·수령자 endpoint 구성이며 최종 의료기관 추적을 의미하지 않습니다."
+                ? "월별 metric 행을 표시하며, endpoint composition은 관측된 유통 도달 구조에서 확인합니다."
                 : "실제 월별 series나 가짜 선 그래프는 포함하지 않습니다."}
             </span>
           </div>
@@ -572,6 +584,16 @@ export default function App({ initialState }: AppProps) {
             </p>
             <div className="reach-placeholder" aria-label="관측된 유통 도달 구조 자리">
               <p>최종단 추적이 아닌 관측된 다음 단계의 구조를 표시할 영역입니다.</p>
+              {localAnalysis && localComposition.length > 0 && (
+                <ul className="reach-list">
+                  {localComposition.map((entry) => (
+                    <li key={`${entry.selection_id}:${entry.month}:${entry.dimension}:${entry.dimension_value}`}>
+                      <span>{entry.month} · {entry.dimension}</span>
+                      <span>{entry.dimension_value}{entry.is_unknown ? " (unknown)" : ""} · {entry.endpoint_count ?? "없음"} / {entry.denominator_endpoint_count ?? "없음"} · {decimalDisplay(entry.endpoint_share)} · flags: {entry.quality_flags || "없음"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {fixture?.observed_reach.released_stages && (
                 <ul className="reach-list">
                   {fixture.observed_reach.released_stages.map((stage) => (

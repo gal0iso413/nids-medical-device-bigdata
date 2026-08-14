@@ -17,6 +17,12 @@ describe("Class 3 local analysis UI", () => {
     expect(screen.queryByText("released")).not.toBeInTheDocument();
   });
 
+  it("converts payload month bounds to month-input values", () => {
+    renderLocal();
+    expect(screen.getByLabelText("시작 월")).toHaveValue("2024-01");
+    expect(screen.getByLabelText("종료 월")).toHaveValue("2024-02");
+  });
+
   it("searches the complete catalog and preserves item-name parent scopes", () => {
     renderLocal();
     const search = screen.getByRole("searchbox", { name: "품목군 또는 품목명 검색" });
@@ -45,7 +51,7 @@ describe("Class 3 local analysis UI", () => {
     const end = screen.getByLabelText("종료 월");
     fireEvent.change(end, { target: { value: "2024-01" } });
     fireEvent.click(screen.getByRole("button", { name: "기간 적용" }));
-    expect(screen.getByText("202401 · 품목군")).toBeInTheDocument();
+    expect(screen.getAllByText("202401 · 품목군")).toHaveLength(2);
     expect(screen.queryByText("202402 · 품목명")).not.toBeInTheDocument();
   });
 
@@ -59,7 +65,7 @@ describe("Class 3 local analysis UI", () => {
     renderLocal(); choose("TEST_GROUP");
     expect(screen.getByText("누락 월: 202402")).toBeInTheDocument();
     expect(screen.getByText("금액 valid rate: 1.000000")).toBeInTheDocument();
-    expect(screen.getByText(/최종 의료기관 추적을 의미하지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/최종단 추적이 아닌 관측된 다음 단계의 구조/)).toBeInTheDocument();
     expect(screen.getByText(/supplier_type_conflict/)).toBeInTheDocument();
   });
 
