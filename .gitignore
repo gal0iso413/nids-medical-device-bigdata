@@ -53,3 +53,9 @@ PROGRESS.md
 .agents/skills/
 class_1_anomaly_detection/data/parquet/
 web/class3_public/public/generated/
+web/class1_internal/public/generated/
+web/class1_internal/node_modules/
+web/class1_internal/dist/
+!web/class1_internal/package.json
+!web/class1_internal/package-lock.json
+!web/class1_internal/tsconfig.json
