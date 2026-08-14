@@ -2,6 +2,18 @@
 
 from .product_key import MAX_EXACT_FLOAT_INTEGER, normalize_integer_code
 
+from .class3_analysis import (
+    CLASS3_ANALYSIS_SCHEMA_VERSION,
+    Class3AnalysisContractError,
+    Class3AnalysisTables,
+    empty_selection_catalog,
+    empty_selection_coverage_summary,
+    empty_selection_month_composition,
+    empty_selection_month_metrics,
+    serialize_class3_analysis,
+    validate_class3_analysis_tables,
+)
+
 from .supply_monthly import (
     BLOCK_DEDUPLICATION_UNVERIFIED,
     BLOCK_NEGATIVE_FORWARD_VALUE,
@@ -29,6 +41,9 @@ __all__ = [
     "BLOCK_PRODUCT_KEY_INVALID",
     "BLOCK_TRANSACTION_SIGN_POLICY_PENDING",
     "BLOCK_TRANSACTION_TYPE_UNKNOWN",
+    "CLASS3_ANALYSIS_SCHEMA_VERSION",
+    "Class3AnalysisContractError",
+    "Class3AnalysisTables",
     "FACT_SCHEMA_NAME",
     "FACT_SCHEMA_VERSION",
     "MONTHLY_FACT_COLUMNS",
@@ -41,7 +56,13 @@ __all__ = [
     "assign_product_ids",
     "build_product_id",
     "empty_monthly_fact",
+    "empty_selection_catalog",
+    "empty_selection_coverage_summary",
+    "empty_selection_month_composition",
+    "empty_selection_month_metrics",
     "normalize_source_rows",
     "normalize_integer_code",
+    "serialize_class3_analysis",
+    "validate_class3_analysis_tables",
     "validate_monthly_fact",
 ]
