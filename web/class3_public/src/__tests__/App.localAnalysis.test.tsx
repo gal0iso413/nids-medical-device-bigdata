@@ -52,7 +52,7 @@ describe("Class 3 local analysis UI", () => {
   it("does not display results for an unselected catalog item", () => {
     renderLocal();
     expect(screen.queryByText("123456789.123456")).not.toBeInTheDocument();
-    expect(screen.getByText("검색 결과에서 품목을 선택해 주세요.")).toBeInTheDocument();
+    expect(screen.getByText("선택된 품목이 없습니다. 검색 결과에서 품목을 선택해 주세요.")).toBeInTheDocument();
   });
 
   it("shows missing months, coverage, quality flags, and endpoint observation scope", () => {
@@ -66,7 +66,7 @@ describe("Class 3 local analysis UI", () => {
   it("retains the existing synthetic mock state", async () => {
     const { loadDevelopmentMock } = await import("../mock/developmentAdapter");
     render(<App initialState={{ kind: "fixture", fixture: loadDevelopmentMock("released") }} />);
-    expect(screen.getByRole("status")).toHaveTextContent("공개 가능한 합성 mock 상태");
+    expect(screen.getByRole("status")).toHaveTextContent("공개 가능 상태 예시");
     expect(screen.getByText("SYNTHETIC_ITEM_GROUP_ALPHA")).toBeInTheDocument();
   });
 });
