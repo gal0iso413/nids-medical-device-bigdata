@@ -7,9 +7,9 @@ function EdgeDetail({ edge }: { edge: GraphEdge }) { return <aside className="ed
 function Header({ entity, anchor, months, status }: { entity: string; anchor: string; months: string[]; status: string }) { return <><header className="hero"><p className="eyebrow">NIDS · CLASS 1</p><h1>내부 거래 관계 모니터링</h1><p>로컬 분석 데이터 · 내부 전용 · 공개 정책 미적용</p></header><section className="status"><strong>선택 업체</strong><span className="id">{entity}</span><span>anchor {anchor} · 분석 구간 {months.join(" ~ ")}</span><span>상태: {status}</span></section></>; }
 function Ready({ state }: { state: Extract<LoadState, { kind: "ready" }> }) {
   const { graph, service } = state;
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(graph.edges[0] ?? null);
   if (service.run_status === "insufficient_graph") return <main id="main-content" className="shell" tabIndex={-1}><Header entity={graph.selected_entity_id} anchor={graph.anchor_month} months={graph.window_months} status={service.run_status} /><section className="empty-state"><h2>관계망이 충분하지 않습니다</h2><p>정상 local 분석 산출물에는 모델 점수와 service 결과가 없으므로 score-free 안내만 표시합니다.</p><p>다른 업체를 보려면 offline runner를 해당 업체 ID로 다시 실행하십시오.</p></section></main>;
   const row = service.service_results.find(item => item.entity_id === graph.selected_entity_id)!;
-  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(graph.edges[0] ?? null);
   const inbound = graph.nodes.filter(node => !node.selected && graph.edges.some(edge => edge.src_company_id === node.entity_id && edge.dst_company_id === row.entity_id));
   const outbound = graph.nodes.filter(node => !node.selected && graph.edges.some(edge => edge.src_company_id === row.entity_id && edge.dst_company_id === node.entity_id));
   const bc = row.bc_evidence;

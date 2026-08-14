@@ -4,6 +4,7 @@ const object = (v: unknown): v is Record<string, unknown> => typeof v === "objec
 const string = (v: unknown): v is string => typeof v === "string";
 export function validatePayloads(service: unknown, graph: unknown): { service: ServicePayload; graph: GraphPayload } {
   if (!object(service) || !string(service.analysis_schema_version) || !string(service.run_status) || !Array.isArray(service.service_results)) throw new Error("internal-service payload contract is invalid");
+  if (service.run_status !== "completed" && service.run_status !== "insufficient_graph") throw new Error("unsupported local run_status");
   if (!object(graph) || graph.graph_scope !== "one_hop" || !string(graph.selected_entity_id) || !string(graph.anchor_month) || !Array.isArray(graph.window_months) || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges) || !object(graph.graph_summary)) throw new Error("internal one-hop graph payload contract is invalid");
   const selectedNodes = graph.nodes.filter((node) => object(node) && node.selected === true);
   if (selectedNodes.length !== 1 || selectedNodes[0].entity_id !== graph.selected_entity_id) throw new Error("graph selected node contract is invalid");
