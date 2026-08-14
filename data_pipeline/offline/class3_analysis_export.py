@@ -63,7 +63,7 @@ class Class3SelectionRequest:
 
 @dataclass(frozen=True)
 class Class3OfflineExportResult:
-    status: Literal["written", "unchanged"]
+    status: Literal["written", "recovered", "unchanged"]
     output_path: Path
     manifest_path: Path
     payload_sha256: str
@@ -111,6 +111,8 @@ def _validate_selections(selections: Iterable[Class3SelectionRequest]) -> tuple[
             raise Class3OfflineExportError("selection label is required")
         if selection.selection_type == "item_group" and parent is not None:
             raise Class3OfflineExportError("item_group selection cannot have a parent")
+        if selection.selection_type == "item_name" and parent is None:
+            raise Class3OfflineExportError("item_name selection requires parent_item_group_label")
         key = (selection.selection_type, label, parent)
         if key not in seen:
             seen.add(key)
@@ -224,16 +226,20 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 
 def _existing_result(
-    payload_path: Path, manifest_path: Path, export_fingerprint: str,
-) -> Class3OfflineExportResult | None:
+    payload_path: Path, manifest_path: Path, export_fingerprint: str, candidate_payload_sha: str,
+) -> Class3OfflineExportResult | Literal["recover_manifest_only"] | None:
     payload_exists = payload_path.exists()
     manifest_exists = manifest_path.exists()
     if not payload_exists and not manifest_exists:
         return None
-    if not payload_exists or not manifest_exists:
+    if not payload_exists and manifest_exists:
         raise Class3OfflineExportConflictError("existing local export is incomplete; refusing overwrite")
     try:
         payload_sha = sha256(payload_path.read_bytes()).hexdigest()
+        if payload_exists and not manifest_exists:
+            if payload_sha == candidate_payload_sha:
+                return "recover_manifest_only"
+            raise Class3OfflineExportConflictError("existing incomplete payload differs from candidate; refusing overwrite")
         raw_manifest = manifest_path.read_bytes()
         manifest = json.loads(raw_manifest.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -334,8 +340,8 @@ def export_class3_analysis(
         "payload_sha256": payload_sha,
     }
     export_fingerprint = _fingerprint(export_input)
-    existing = _existing_result(payload_path, manifest_path, export_fingerprint)
-    if existing is not None:
+    existing = _existing_result(payload_path, manifest_path, export_fingerprint, payload_sha)
+    if isinstance(existing, Class3OfflineExportResult):
         return existing
     manifest = {
         **export_input,
@@ -346,9 +352,13 @@ def export_class3_analysis(
         "suppression_policy_state": "not_evaluated",
         "payload_filename": PAYLOAD_FILENAME,
     }
-    _atomic_write(payload_path, payload_bytes)
+    if existing != "recover_manifest_only":
+        _atomic_write(payload_path, payload_bytes)
     _atomic_write(manifest_path, _canonical_json_bytes(manifest))
-    return Class3OfflineExportResult("written", payload_path, manifest_path, payload_sha, export_state)
+    status: Literal["written", "recovered"] = (
+        "recovered" if existing == "recover_manifest_only" else "written"
+    )
+    return Class3OfflineExportResult(status, payload_path, manifest_path, payload_sha, export_state)
 
 
 def _read_config(path: Path) -> dict[str, Any]:

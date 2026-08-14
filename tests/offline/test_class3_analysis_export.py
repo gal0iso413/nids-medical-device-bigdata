@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -14,6 +15,7 @@ from data_pipeline.contracts.class3_analysis import serialize_class3_analysis
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
 from data_pipeline.offline.class3_analysis_export import (
     Class3OfflineExportConflictError,
+    Class3OfflineExportError,
     Class3SelectionRequest,
     export_class3_analysis,
 )
@@ -117,6 +119,13 @@ class Class3OfflineExportTests(unittest.TestCase):
         self.assertEqual(result.export_state, "available")
         self.assertEqual([(row["selection_type"], row["label"], row["parent_item_group_label"]) for row in catalog], [("item_name", "Item B", "Group B")])
 
+    def test_item_name_selection_requires_parent_scope(self) -> None:
+        with self.assertRaisesRegex(Class3OfflineExportError, "requires parent_item_group_label"):
+            export_class3_analysis(
+                parquet_root=self.store, period_start="202401", period_end="202402", web_public_root=self.public,
+                selections=(Class3SelectionRequest("item_name", "Item B"),),
+            )
+
     def test_missing_month_marks_coverage_insufficient(self) -> None:
         result = export_class3_analysis(
             parquet_root=self.store, period_start="202401", period_end="202403", web_public_root=self.public,
@@ -126,6 +135,36 @@ class Class3OfflineExportTests(unittest.TestCase):
         self.assertEqual(result.export_state, "insufficient_coverage")
         self.assertIn("local_export_coverage_insufficient", summary["quality_flags"])
         self.assertEqual(summary["missing_months"], ["202403"])
+
+    def test_payload_write_failure_leaves_no_publish_and_retry_writes(self) -> None:
+        import data_pipeline.offline.class3_analysis_export as exporter
+
+        with patch.object(exporter, "_atomic_write", side_effect=Class3OfflineExportError("synthetic payload failure")):
+            with self.assertRaisesRegex(Class3OfflineExportError, "synthetic payload failure"):
+                self.export()
+        self.assertFalse((self.public / "generated" / "class3-analysis.json").exists())
+        self.assertEqual(self.export().status, "written")
+
+    def test_manifest_failure_recovers_matching_payload_then_is_unchanged(self) -> None:
+        import data_pipeline.offline.class3_analysis_export as exporter
+
+        real_write = exporter._atomic_write
+
+        def fail_manifest(path: Path, data: bytes) -> None:
+            if path.name == "class3-analysis-manifest.json":
+                raise Class3OfflineExportError("synthetic manifest failure")
+            real_write(path, data)
+
+        with patch.object(exporter, "_atomic_write", side_effect=fail_manifest):
+            with self.assertRaisesRegex(Class3OfflineExportError, "synthetic manifest failure"):
+                self.export()
+        payload_path = self.public / "generated" / "class3-analysis.json"
+        manifest_path = self.public / "generated" / "class3-analysis-manifest.json"
+        self.assertTrue(payload_path.exists())
+        self.assertFalse(manifest_path.exists())
+        self.assertEqual(self.export().status, "recovered")
+        self.assertTrue(manifest_path.exists())
+        self.assertEqual(self.export().status, "unchanged")
 
     def test_empty_selection_suppressed_and_not_available_payloads(self) -> None:
         empty = export_class3_analysis(parquet_root=self.store, period_start="202401", period_end="202402", selections=(), web_public_root=self.public)
