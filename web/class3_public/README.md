@@ -71,6 +71,9 @@ Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. �
 
 ## Local analysis adapter
 
+For the full offline execution and read-only artifact verification sequence,
+see [`docs/data/local-analysis-turnkey-runbook.md`](../../docs/data/local-analysis-turnkey-runbook.md).
+
 PR #15의 Python `serialize_class3_analysis()`가 생성한 JSON payload를 명시적으로 연결한다.
 JSON 생성은 Python serializer의 책임이며, 브라우저는 Excel, Parquet, SQLite를 직접 읽지 않는다.
 실제 생성 파일은 `web/class3_public/public/generated/class3-analysis.json`에 둘 수 있으며 커밋하지 않는다.

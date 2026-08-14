@@ -21,3 +21,6 @@ Missing URLs, loading failures, invalid payloads, and service/graph entity
 mismatches show an error and never fall back to mock data. Development fixtures,
 when used in tests, stay under `src/mock/` and are not imported by the runtime
 local adapter or production build.
+
+For the end-to-end offline sequence and artifact verification, see
+[`docs/data/local-analysis-turnkey-runbook.md`](../../docs/data/local-analysis-turnkey-runbook.md).
