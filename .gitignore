@@ -1,4 +1,6 @@
 .env
+field-run.toml
+field-run.local.toml
 __pycache__/
 *.pyc
 .venv/
