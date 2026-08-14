@@ -25,17 +25,16 @@ def synthetic_fact(months):
 
 class LocalArtifactHandoffSmokeTests(unittest.TestCase):
     def test_existing_exporter_and_runner_produce_web_local_contracts(self):
+        fixture = json.loads((Path(__file__).parents[1] / "fixtures" / "local_artifact_handoff" / "canonical-fixture.json").read_text())
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); parquet = root / "parquet"; write_monthly_fact_partitions(synthetic_fact(("202401","202402","202403","202404","202405","202406")), parquet)
             public = root / "public"
             export_class3_analysis(parquet_root=parquet, period_start="202401", period_end="202402", selections=(Class3SelectionRequest("item_group", "SYNTHETIC_GROUP"),), web_public_root=public)
             class3 = json.loads((public / "generated" / "class3-analysis.json").read_text())
-            self.assertEqual(class3["analysis_schema_version"], "1.0.0")
-            self.assertEqual(class3["local_export"]["publication_scope"], "local_only")
+            self.assertEqual(class3, fixture["class3"])
             result = run_class1_offline_anchor(Class1OfflineAnchorConfig(parquet, root / "output", "202406", "synthetic-a", ("11","26"), "synthetic", 7, 1, 2, 2))
             service = json.loads((result.run_directory / "internal-service.json").read_text())
             graph = json.loads((result.run_directory / "internal-one-hop-graph.json").read_text())
-            self.assertEqual(service["run_status"], "insufficient_graph")
-            self.assertEqual(service["service_results"], [])
-            self.assertEqual(graph["selected_entity_id"], "synthetic-a")
+            self.assertEqual(service, fixture["class1"]["service"])
+            self.assertEqual(graph, fixture["class1"]["graph"])
             self.assertNotIn("raw_score", json.dumps(service) + json.dumps(graph))
