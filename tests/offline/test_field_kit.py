@@ -50,7 +50,12 @@ class OfflineFieldKitTests(unittest.TestCase):
     def _synthetic_kit(self) -> Path:
         kit = self.temp / "한글 공간 kit"
         kit.mkdir()
-        for name in ("field-kit-common.ps1", "verify-field-kit.ps1"):
+        for name in (
+            "field-kit-common.ps1",
+            "verify-field-kit.ps1",
+            "install-field-env.ps1",
+            "smoke-test.ps1",
+        ):
             shutil.copy2(TOOLS / name, kit / name)
         payload = kit / "payload" / "synthetic.txt"
         payload.parent.mkdir()
@@ -102,6 +107,34 @@ class OfflineFieldKitTests(unittest.TestCase):
                 str(kit),
             ],
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+        )
+
+    def _run_from_other_cwd(
+        self,
+        kit: Path,
+        script_name: str,
+        *arguments: str,
+    ) -> subprocess.CompletedProcess[str]:
+        other_cwd = self.temp / "다른 작업 폴더"
+        other_cwd.mkdir(exist_ok=True)
+        return subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(kit / script_name),
+                *arguments,
+            ],
+            cwd=other_cwd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
@@ -145,6 +178,32 @@ class OfflineFieldKitTests(unittest.TestCase):
         result = self._verify(self._synthetic_kit())
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["status"], "verified")
+
+    def test_verify_defaults_to_script_directory_from_other_cwd(self) -> None:
+        kit = self._synthetic_kit()
+        result = self._run_from_other_cwd(kit, "verify-field-kit.ps1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "verified")
+
+    def test_install_defaults_to_script_directory_from_other_cwd(self) -> None:
+        kit = self._synthetic_kit()
+        missing_python = self.temp / "missing python.exe"
+        result = self._run_from_other_cwd(
+            kit,
+            "install-field-env.ps1",
+            "-PythonExe",
+            str(missing_python),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Python executable does not exist", result.stderr)
+        self.assertNotIn("manifest.json is missing", result.stderr)
+
+    def test_smoke_defaults_to_script_directory_from_other_cwd(self) -> None:
+        kit = self._synthetic_kit()
+        result = self._run_from_other_cwd(kit, "smoke-test.ps1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Installed field environment is incomplete", result.stderr)
+        self.assertNotIn("manifest.json is missing", result.stderr)
 
     def test_verifier_blocks_missing_file(self) -> None:
         kit = self._synthetic_kit()

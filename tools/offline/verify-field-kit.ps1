@@ -1,12 +1,16 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [string] $KitDirectory = $PSScriptRoot
+    [string] $KitDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot "field-kit-common.ps1")
+$scriptDirectory = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($KitDirectory)) {
+    $KitDirectory = $scriptDirectory
+}
+. (Join-Path $scriptDirectory "field-kit-common.ps1")
 
 try {
     $manifest = Test-FieldKit -KitDirectory $KitDirectory
