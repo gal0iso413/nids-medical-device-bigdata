@@ -50,3 +50,5 @@ PROGRESS.md
 
 # Cursor
 .cursor/
+.agents/skills/
+class_1_anomaly_detection/data/parquet/
