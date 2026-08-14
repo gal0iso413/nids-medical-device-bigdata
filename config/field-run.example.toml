@@ -1,0 +1,18 @@
+config_version = "1.0.0"
+
+[paths]
+supply_workbooks = ["../inputs/supply/example-supply.xlsx"]
+checkpoint_root = "../field-artifacts/checkpoints"
+output_root = "../field-artifacts/monthly-facts"
+
+[master]
+lookup_root = "../field-artifacts/master-lookup"
+source_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+# To build/reuse a lookup from immutable Master snapshots instead, remove
+# source_hash and set: workbooks = ["../inputs/master/example-master.xlsx"]
+
+[run]
+batch_size = 10000
+max_month_fact_bytes = 536870912
+# Site operators must replace zero with an approved free-space floor.
+minimum_free_bytes = 0
