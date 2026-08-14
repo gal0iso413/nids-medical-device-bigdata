@@ -4,6 +4,10 @@ import type {
   SelectionItem,
   SelectionType,
 } from "./contracts/class3Mock";
+import type {
+  Class3AnalysisPayload,
+  Class3SelectionCatalogRow,
+} from "./contracts/class3Analysis";
 import {
   resolveCurrentClass3PageState,
   type Class3PageState,
@@ -32,7 +36,44 @@ interface PeriodState {
   endMonth: string;
 }
 
+interface LocalSelectionItem extends SelectionItem {
+  parentLabel?: string | null;
+}
+
+function localPeriod(analysis: Class3AnalysisPayload): PeriodState {
+  const summaries = analysis.selection_coverage_summary;
+  return {
+    startMonth: payloadMonthToInputMonth(
+      summaries.map((summary) => summary.period_start).sort()[0] ?? "",
+    ),
+    endMonth: payloadMonthToInputMonth(
+      summaries.map((summary) => summary.period_end).sort().at(-1) ?? "",
+    ),
+  };
+}
+
+function payloadMonthToInputMonth(value: string): string {
+  return /^\d{6}$/.test(value) ? `${value.slice(0, 4)}-${value.slice(4)}` : "";
+}
+
+function inputMonthToPayloadMonth(value: string): string {
+  return /^\d{4}-\d{2}$/.test(value) ? value.replace("-", "") : "";
+}
+
+function isMonthInPeriod(month: string, period: PeriodState): boolean {
+  const start = inputMonthToPayloadMonth(period.startMonth);
+  const end = inputMonthToPayloadMonth(period.endMonth);
+  return (!start || month >= start) && (!end || month <= end);
+}
+
+function decimalDisplay(value: string | null): string {
+  return value ?? "검증된 값 없음";
+}
+
 function statusMessage(state: Class3PageState): string {
+  if (state.kind === "local_analysis") {
+    return "로컬 분석 데이터 · 공개 정책 미적용";
+  }
   if (state.kind === "fixture") {
     if (state.fixture.view_state === "empty") {
       return "결과 없음 상태 예시";
@@ -45,6 +86,9 @@ function statusMessage(state: Class3PageState): string {
 function statusTone(state: Class3PageState): string {
   if (state.kind === "error") {
     return "danger";
+  }
+  if (state.kind === "local_analysis") {
+    return "attention";
   }
   if (state.kind !== "fixture") {
     return "neutral";
@@ -66,18 +110,25 @@ export default function App({ initialState }: AppProps) {
     initialState ?? { kind: "loading", message: "화면 상태를 준비하는 중입니다." },
   );
   const initialFixture = initialState?.kind === "fixture" ? initialState.fixture : undefined;
+  const initialLocalAnalysis = initialState?.kind === "local_analysis"
+    ? initialState.analysis
+    : undefined;
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIsOpen, setSearchIsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(
     initialFixture?.selection_summary.selections.map((selection) => selection.id) ?? [],
   );
   const [periodDraft, setPeriodDraft] = useState<PeriodState>({
-    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
-    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
+    startMonth: initialFixture?.selection_summary.period.start_month
+      ?? (initialLocalAnalysis ? localPeriod(initialLocalAnalysis).startMonth : ""),
+    endMonth: initialFixture?.selection_summary.period.end_month
+      ?? (initialLocalAnalysis ? localPeriod(initialLocalAnalysis).endMonth : ""),
   });
   const [appliedPeriod, setAppliedPeriod] = useState<PeriodState>({
-    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
-    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
+    startMonth: initialFixture?.selection_summary.period.start_month
+      ?? (initialLocalAnalysis ? localPeriod(initialLocalAnalysis).startMonth : ""),
+    endMonth: initialFixture?.selection_summary.period.end_month
+      ?? (initialLocalAnalysis ? localPeriod(initialLocalAnalysis).endMonth : ""),
   });
 
   useEffect(() => {
@@ -98,11 +149,23 @@ export default function App({ initialState }: AppProps) {
   }, [initialState]);
 
   const fixture = state.kind === "fixture" ? state.fixture : undefined;
-  const fixtureKey = fixture
+  const localAnalysis = state.kind === "local_analysis" ? state.analysis : undefined;
+  const stateKey = fixture
     ? `${fixture.data_version}:${fixture.release_status}:${fixture.view_state}`
+    : localAnalysis
+    ? `local:${localAnalysis.analysis_schema_version}:${localAnalysis.selection_catalog.length}`
     : "no-fixture";
 
   useEffect(() => {
+    if (localAnalysis) {
+      const nextPeriod = localPeriod(localAnalysis);
+      setSelectedIds([]);
+      setPeriodDraft(nextPeriod);
+      setAppliedPeriod(nextPeriod);
+      setSearchQuery("");
+      setSearchIsOpen(false);
+      return;
+    }
     if (!fixture) {
       setSelectedIds([]);
       setPeriodDraft({ startMonth: "", endMonth: "" });
@@ -119,9 +182,16 @@ export default function App({ initialState }: AppProps) {
     setAppliedPeriod(nextPeriod);
     setSearchQuery("");
     setSearchIsOpen(false);
-  }, [fixtureKey]);
+  }, [stateKey]);
 
-  const candidateSelections = fixture?.selection_summary.selections ?? [];
+  const candidateSelections: LocalSelectionItem[] = localAnalysis
+    ? localAnalysis.selection_catalog.map((selection: Class3SelectionCatalogRow) => ({
+      id: selection.selection_id,
+      type: selection.selection_type,
+      label: selection.label,
+      parentLabel: selection.parent_item_group_label,
+    }))
+    : fixture?.selection_summary.selections ?? [];
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedSelections = candidateSelections.filter((selection) =>
     selectedIdSet.has(selection.id),
@@ -131,7 +201,12 @@ export default function App({ initialState }: AppProps) {
     if (!normalizedQuery) {
       return true;
     }
-    return [selection.label, selection.type, selectionTypeLabels[selection.type]]
+    return [
+      selection.label,
+      selection.type,
+      selectionTypeLabels[selection.type],
+      selection.parentLabel ?? "",
+    ]
       .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
   });
   const selectedResults = (fixture?.per_item_results ?? []).filter((result) =>
@@ -144,20 +219,29 @@ export default function App({ initialState }: AppProps) {
       && periodDraft.endMonth
       && periodDraft.startMonth > periodDraft.endMonth,
   );
+  const localMetrics = localAnalysis?.selection_month_metrics.filter((metric) =>
+    selectedIdSet.has(metric.selection_id) && isMonthInPeriod(metric.month, appliedPeriod),
+  ) ?? [];
+  const localComposition = localAnalysis?.selection_month_composition.filter((entry) =>
+    selectedIdSet.has(entry.selection_id) && isMonthInPeriod(entry.month, appliedPeriod),
+  ) ?? [];
+  const localCoverage = localAnalysis?.selection_coverage_summary.filter((summary) =>
+    selectedIdSet.has(summary.selection_id),
+  ) ?? [];
   const periodCanApply = Boolean(
-    fixture
+    (fixture || localAnalysis)
       && periodDraft.startMonth
       && periodDraft.endMonth
       && !periodIsInvalid,
   );
 
-  function addSelection(selection: SelectionItem) {
+  function addSelection(selection: LocalSelectionItem) {
     setSelectedIds((currentIds) =>
       currentIds.includes(selection.id) ? currentIds : [...currentIds, selection.id],
     );
   }
 
-  function removeSelection(selection: SelectionItem) {
+  function removeSelection(selection: LocalSelectionItem) {
     setSelectedIds((currentIds) => currentIds.filter((id) => id !== selection.id));
   }
 
@@ -177,7 +261,9 @@ export default function App({ initialState }: AppProps) {
             </span>
           </div>
           <span className={`environment-badge${fixture ? " is-synthetic" : ""}`}>
-            {fixture ? "합성 개발 데이터" : "서비스 데이터 미연결"}
+            {localAnalysis
+              ? "로컬 분석 데이터 · 공개 정책 미적용"
+              : fixture ? "합성 개발 데이터" : "서비스 데이터 미연결"}
           </span>
         </div>
       </header>
@@ -191,8 +277,9 @@ export default function App({ initialState }: AppProps) {
             공개 서비스의 화면 계약입니다.
           </p>
           <p className="data-boundary" role="note">
-            현재 production API는 연결되지 않았습니다. 표시 범위와 결측·억제
-            상태를 확인한 뒤 결과를 해석해야 합니다.
+            {localAnalysis
+              ? "로컬 분석은 공개 정책이 적용되지 않은 상태입니다. 공급 활동을 판매량·수요·시장 성장으로 해석하지 않습니다."
+              : "현재 production API는 연결되지 않았습니다. 표시 범위와 결측·억제 상태를 확인한 뒤 결과를 해석해야 합니다."}
           </p>
         </header>
 
@@ -225,18 +312,20 @@ export default function App({ initialState }: AppProps) {
               aria-controls="selection-search-results"
               aria-expanded={searchIsOpen}
               autoComplete="off"
-              disabled={!fixture}
+              disabled={!fixture && !localAnalysis}
             />
           </label>
           <p id="search-help" className="placeholder-note">
-            현재 synthetic fixture에 포함된 품목만 검색합니다.
+            {localAnalysis
+              ? "전체 local selection catalog를 검색합니다."
+              : "현재 synthetic fixture에 포함된 품목만 검색합니다."}
           </p>
           <p id="search-status" className="sr-only" aria-live="polite">
             {searchIsOpen
               ? `검색 결과 ${filteredCandidates.length}개`
               : "검색 결과 닫힘"}
           </p>
-          {fixture && searchIsOpen && (
+          {(fixture || localAnalysis) && searchIsOpen && (
             <ul
               id="selection-search-results"
               className="search-results"
@@ -257,6 +346,9 @@ export default function App({ initialState }: AppProps) {
                           {selectionTypeLabels[selection.type]}
                         </span>
                         <span className="synthetic-label">{selection.label}</span>
+                        {selection.type === "item_name" && selection.parentLabel && (
+                          <span>상위 품목군: {selection.parentLabel}</span>
+                        )}
                         <span className="search-result-state">
                           {isSelected ? "선택됨" : "선택"}
                         </span>
@@ -284,6 +376,9 @@ export default function App({ initialState }: AppProps) {
                       {selectionTypeLabels[selection.type]}
                     </span>
                     <span className="synthetic-label">{selection.label}</span>
+                    {selection.type === "item_name" && selection.parentLabel && (
+                      <span>상위 품목군: {selection.parentLabel}</span>
+                    )}
                     <button
                       type="button"
                       className="remove-selection"
@@ -314,7 +409,7 @@ export default function App({ initialState }: AppProps) {
                   }))}
                   aria-invalid={periodIsInvalid}
                   aria-describedby={periodIsInvalid ? "period-error" : undefined}
-                  disabled={!fixture}
+                  disabled={!fixture && !localAnalysis}
                 />
               </label>
               <label>
@@ -328,7 +423,7 @@ export default function App({ initialState }: AppProps) {
                   }))}
                   aria-invalid={periodIsInvalid}
                   aria-describedby={periodIsInvalid ? "period-error" : undefined}
-                  disabled={!fixture}
+                  disabled={!fixture && !localAnalysis}
                 />
               </label>
             </div>
@@ -357,7 +452,29 @@ export default function App({ initialState }: AppProps) {
             <p className="section-kicker">품목별 보기</p>
             <h2 id="comparison-heading">품목별 비교 결과</h2>
           </div>
-          {selectedResults.length ? (
+          {localAnalysis && localMetrics.length ? (
+            <div className="card-grid">
+              {localMetrics.map((metric) => (
+                <article className="result-card" key={`${metric.selection_id}:${metric.month}`}>
+                  <div className="result-card__header">
+                    <h3>{metric.month} · {selectionTypeLabels[metric.selection_type]}</h3>
+                    <span className="synthetic-label">{metric.selection_id}</span>
+                  </div>
+                  <dl className="released-content">
+                    <div><dt>월별 거래 건수</dt><dd>{metric.tx_count ?? "없음"}</dd></div>
+                    <div><dt>공급금액</dt><dd>{decimalDisplay(metric.amount_sum_clean)}</dd></div>
+                    <div><dt>원시 공급수량</dt><dd>{decimalDisplay(metric.raw_supply_qty_sum)}</dd></div>
+                    {metric.piece_qty_sum !== null && <div><dt>낱개수량 (검증됨)</dt><dd>{metric.piece_qty_sum}</dd></div>}
+                    <div><dt>금액 coverage</dt><dd>{decimalDisplay(metric.amount_coverage)}</dd></div>
+                    <div><dt>원시 수량 coverage</dt><dd>{decimalDisplay(metric.raw_supply_qty_coverage)}</dd></div>
+                    <div><dt>월별 공급자 수</dt><dd>{metric.unique_supplier_count ?? "없음"}</dd></div>
+                    <div><dt>월별 수령자 수</dt><dd>{metric.unique_receiver_count ?? "없음"}</dd></div>
+                    <div><dt>quality flags</dt><dd>{metric.quality_flags || "없음"}</dd></div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : selectedResults.length ? (
             <div className="card-grid">
               {selectedResults.map((result) => (
                 <article className="result-card" key={result.selection_id}>
@@ -385,6 +502,8 @@ export default function App({ initialState }: AppProps) {
                 ? "선택된 품목이 없습니다. 검색 결과에서 품목을 선택해 주세요."
                 : fixture?.view_state === "empty"
                 ? "조건에 맞는 결과가 없습니다."
+                : localAnalysis
+                ? "적용 기간에 표시할 선택 품목 결과가 없습니다."
                 : "비교 결과를 제공할 수 없습니다."}
             </p>
           )}
@@ -397,7 +516,17 @@ export default function App({ initialState }: AppProps) {
           </div>
           <div className="placeholder-panel" aria-label="월별 추세 시각화 자리">
             <strong>향후 monthly series 연결 영역</strong>
-            {selectedResults.length ? (
+            {localAnalysis && localMetrics.length ? (
+              <ul className="trend-list">
+                {localMetrics.map((metric) => (
+                  <li key={`${metric.selection_id}:${metric.month}`}>
+                    <span>{metric.month} · {selectionTypeLabels[metric.selection_type]}</span>
+                    <span className="synthetic-label">{metric.selection_id}</span>
+                    <span>거래 {metric.tx_count ?? "없음"}건 · 공급금액 {decimalDisplay(metric.amount_sum_clean)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : selectedResults.length ? (
               <ul className="trend-list">
                 {selectedResults.map((result) => (
                   <li key={result.selection_id}>
@@ -414,7 +543,11 @@ export default function App({ initialState }: AppProps) {
             ) : (
               <span>선택된 품목의 추세 표시가 없습니다.</span>
             )}
-            <span className="placeholder-note">실제 월별 series나 가짜 선 그래프는 포함하지 않습니다.</span>
+            <span className="placeholder-note">
+              {localAnalysis
+                ? "월별 metric 행을 표시하며, endpoint composition은 관측된 유통 도달 구조에서 확인합니다."
+                : "실제 월별 series나 가짜 선 그래프는 포함하지 않습니다."}
+            </span>
           </div>
         </section>
 
@@ -451,6 +584,16 @@ export default function App({ initialState }: AppProps) {
             </p>
             <div className="reach-placeholder" aria-label="관측된 유통 도달 구조 자리">
               <p>최종단 추적이 아닌 관측된 다음 단계의 구조를 표시할 영역입니다.</p>
+              {localAnalysis && localComposition.length > 0 && (
+                <ul className="reach-list">
+                  {localComposition.map((entry) => (
+                    <li key={`${entry.selection_id}:${entry.month}:${entry.dimension}:${entry.dimension_value}`}>
+                      <span>{entry.month} · {entry.dimension}</span>
+                      <span>{entry.dimension_value}{entry.is_unknown ? " (unknown)" : ""} · {entry.endpoint_count ?? "없음"} / {entry.denominator_endpoint_count ?? "없음"} · {decimalDisplay(entry.endpoint_share)} · flags: {entry.quality_flags || "없음"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {fixture?.observed_reach.released_stages && (
                 <ul className="reach-list">
                   {fixture.observed_reach.released_stages.map((stage) => (
@@ -470,7 +613,29 @@ export default function App({ initialState }: AppProps) {
             <p className="section-kicker">공개 범위 확인</p>
             <h2 id="coverage-heading">데이터 coverage·결측·억제 안내</h2>
           </div>
-          {fixture ? (
+          {localAnalysis ? (
+            localCoverage.length ? (
+              <ul className="coverage-grid">
+                {localCoverage.map((summary) => {
+                  const differsFromApplied = summary.period_start !== appliedPeriod.startMonth.replace("-", "")
+                    || summary.period_end !== appliedPeriod.endMonth.replace("-", "");
+                  return (
+                    <li key={summary.selection_id}>
+                      <strong>{summary.selection_id}</strong>
+                      <span>summary 생성 기간: {summary.period_start} ~ {summary.period_end}</span>
+                      {differsFromApplied && <span>현재 적용 기간과 다르며, 아래 coverage는 summary 생성 기간 기준입니다.</span>}
+                      <span>포함 월: {summary.included_months.join(", ") || "없음"}</span>
+                      <span>누락 월: {summary.missing_months.join(", ") || "없음"}</span>
+                      <span>금액 valid rate: {decimalDisplay(summary.amount_valid_rate)}</span>
+                      <span>원시 수량 valid rate: {decimalDisplay(summary.raw_supply_qty_valid_rate)}</span>
+                      <span>낱개수량 valid rate: {decimalDisplay(summary.piece_qty_valid_rate)}</span>
+                      <span>quality flags: {summary.quality_flags || "없음"}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : <p className="empty-copy">선택한 품목의 coverage 요약이 없습니다.</p>
+          ) : fixture ? (
             <ul className="coverage-grid">
               {fixture.coverage.field_states.map((field) => (
                 <li key={field.field}>
@@ -490,11 +655,12 @@ export default function App({ initialState }: AppProps) {
         <footer className="methodology-footer" aria-label="버전 정보">
           <h2>버전 정보</h2>
           <dl>
-            <div><dt>Schema</dt><dd>{fixture?.schema_version ?? "not-connected"}</dd></div>
-            <div><dt>Data</dt><dd>{fixture?.data_version ?? "not-connected"}</dd></div>
-            <div><dt>Policy</dt><dd>{fixture?.policy_version ?? "not-approved"}</dd></div>
+            <div><dt>Schema</dt><dd>{localAnalysis?.analysis_schema_version ?? fixture?.schema_version ?? "not-connected"}</dd></div>
+            <div><dt>Data</dt><dd>{localAnalysis ? "selection coverage summary 참조" : fixture?.data_version ?? "not-connected"}</dd></div>
+            <div><dt>Policy</dt><dd>{localAnalysis ? "공개 정책 미적용" : fixture?.policy_version ?? "not-approved"}</dd></div>
           </dl>
           {fixture && <p>{fixture.development_notice}</p>}
+          {localAnalysis && <p>로컬 분석은 공개 서비스 승인 또는 공개 보호 처리 상태가 아닙니다.</p>}
         </footer>
       </main>
     </>

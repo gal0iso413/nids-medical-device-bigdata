@@ -68,3 +68,19 @@ UI-01C의 검색·다중 선택·기간 적용은 이 fixture 범위 안에서 �
 외부 Pretendard CDN `@import`는 배포 보안·가용성·개인정보 정책이 확정되지 않아 사용하지 않는다. 현재는 `"Pretendard GOV"`, Pretendard, `"Apple SD Gothic Neo"`, `"Malgun Gothic"`, system-ui, sans-serif의 로컬 fallback stack만 사용한다. 폰트 self-hosting은 배포 정책 확정 후 별도 작업이다.
 
 Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. 실제 검색 dimension과 공개 API 연결은 PR-C3-04와 PR-C3-UI-02에서 수행한다.
+
+## Local analysis adapter
+
+PR #15의 Python `serialize_class3_analysis()`가 생성한 JSON payload를 명시적으로 연결한다.
+JSON 생성은 Python serializer의 책임이며, 브라우저는 Excel, Parquet, SQLite를 직접 읽지 않는다.
+실제 생성 파일은 `web/class3_public/public/generated/class3-analysis.json`에 둘 수 있으며 커밋하지 않는다.
+
+```powershell
+$env:VITE_CLASS3_DATA_SOURCE = "local"
+$env:VITE_CLASS3_ANALYSIS_URL = "/generated/class3-analysis.json" # local mode에서는 선택 사항
+npm run dev
+```
+
+`VITE_CLASS3_DATA_SOURCE=local`일 때만 URL 미설정 시 위 기본 경로를 사용한다. payload schema나
+필수 필드가 맞지 않거나 load가 실패하면 오류 상태를 보이며 mock으로 fallback하지 않는다. 화면은
+`로컬 분석 데이터 · 공개 정책 미적용`으로 표시되며, 공개 서비스 승인·공개 억제·비식별 정책 적용 상태가 아니다.

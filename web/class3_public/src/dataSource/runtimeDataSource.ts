@@ -1,72 +1,49 @@
+import type { Class3AnalysisPayload } from "../contracts/class3Analysis";
 import type { Class3MockFixture } from "../contracts/class3Mock";
 
-export interface RuntimeEnvironment {
-  mode: string;
-  requestedSource?: string;
-  requestedFixture?: string;
-}
-
+export interface RuntimeEnvironment { mode: string; requestedSource?: string; requestedFixture?: string; localAnalysisUrl?: string; }
 export type Class3PageState =
   | { kind: "loading"; message: string }
   | { kind: "error"; message: string }
   | { kind: "unavailable"; message: string }
-  | { kind: "fixture"; fixture: Class3MockFixture };
+  | { kind: "fixture"; fixture: Class3MockFixture }
+  | { kind: "local_analysis"; analysis: Class3AnalysisPayload };
+export type DevelopmentMockLoader = (fixtureName: string) => Promise<Class3MockFixture>;
+export type LocalAnalysisLoader = (url: string) => Promise<Class3AnalysisPayload>;
 
-export type DevelopmentMockLoader = (
-  fixtureName: string,
-) => Promise<Class3MockFixture>;
-
-export function selectDataSource(environment: RuntimeEnvironment):
-  | "development_mock"
-  | "unavailable" {
-  if (
-    environment.mode === "development" &&
-    environment.requestedSource === "mock"
-  ) {
-    return "development_mock";
-  }
-
+export function selectDataSource(environment: RuntimeEnvironment): "development_mock" | "local_analysis" | "unavailable" {
+  if (environment.requestedSource === "local") return "local_analysis";
+  if (environment.mode === "development" && environment.requestedSource === "mock") return "development_mock";
   return "unavailable";
 }
 
-export async function resolveClass3PageState(
-  environment: RuntimeEnvironment,
-  loadMock: DevelopmentMockLoader,
-): Promise<Class3PageState> {
-  if (selectDataSource(environment) !== "development_mock") {
-    return {
-      kind: "unavailable",
-      message: "서비스 데이터 연결 전",
-    };
+export async function resolveClass3PageState(environment: RuntimeEnvironment, loadMock: DevelopmentMockLoader, loadLocal: LocalAnalysisLoader): Promise<Class3PageState> {
+  const source = selectDataSource(environment);
+  if (source === "unavailable") return { kind: "unavailable", message: "서비스 데이터가 연결되지 않았습니다." };
+  if (source === "local_analysis") {
+    try { return { kind: "local_analysis", analysis: await loadLocal(environment.localAnalysisUrl ?? "/generated/class3-analysis.json") }; }
+    catch (error) { return { kind: "error", message: `로컬 분석 데이터를 불러오지 못했습니다: ${error instanceof Error ? error.message : "unknown error"}` }; }
   }
-
-  try {
-    const fixture = await loadMock(environment.requestedFixture ?? "released");
-    return { kind: "fixture", fixture };
-  } catch {
-    return {
-      kind: "error",
-      message: "개발용 mock fixture를 불러오지 못했습니다.",
-    };
-  }
+  try { return { kind: "fixture", fixture: await loadMock(environment.requestedFixture ?? "released") }; }
+  catch { return { kind: "error", message: "개발 mock fixture를 불러오지 못했습니다." }; }
 }
 
 export async function resolveCurrentClass3PageState(): Promise<Class3PageState> {
-  if (!import.meta.env.DEV) {
-    return {
-      kind: "unavailable",
-      message: "서비스 데이터 연결 전",
-    };
-  }
-
   const environment: RuntimeEnvironment = {
-    mode: "development",
+    mode: import.meta.env.DEV ? "development" : "production",
     requestedSource: import.meta.env.VITE_CLASS3_DATA_SOURCE,
     requestedFixture: import.meta.env.VITE_CLASS3_MOCK_FIXTURE,
+    localAnalysisUrl: import.meta.env.VITE_CLASS3_ANALYSIS_URL,
   };
-
-  return resolveClass3PageState(environment, async (fixtureName) => {
-    const { loadDevelopmentMock } = await import("../mock/developmentAdapter");
-    return loadDevelopmentMock(fixtureName);
-  });
+  const loadLocal: LocalAnalysisLoader = async (url) => {
+    const { loadLocalClass3Analysis } = await import("./localAnalysisAdapter");
+    return loadLocalClass3Analysis(url);
+  };
+  if (import.meta.env.DEV && environment.requestedSource === "mock") {
+    return resolveClass3PageState(environment, async (fixtureName) => {
+      const { loadDevelopmentMock } = await import("../mock/developmentAdapter");
+      return loadDevelopmentMock(fixtureName);
+    }, loadLocal);
+  }
+  return resolveClass3PageState(environment, async () => { throw new Error("Development mock loading is disabled."); }, loadLocal);
 }

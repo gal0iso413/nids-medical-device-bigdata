@@ -1,64 +1,41 @@
 // @vitest-environment node
-
 import { describe, expect, it, vi } from "vitest";
-import { loadDevelopmentMock } from "../mock/developmentAdapter";
-import {
-  resolveClass3PageState,
-  selectDataSource,
-} from "../dataSource/runtimeDataSource";
+import { resolveClass3PageState, selectDataSource } from "../dataSource/runtimeDataSource";
+import { syntheticClass3AnalysisPayload } from "../test/class3AnalysisPayload";
+
+const unavailable = "서비스 데이터가 연결되지 않았습니다.";
+const mockLoader = vi.fn(async () => { throw new Error("mock should not load"); });
 
 describe("Class 3 runtime data-source boundary", () => {
-  it("selects mock only in development with an explicit setting", () => {
-    expect(selectDataSource({ mode: "development", requestedSource: "mock" })).toBe(
-      "development_mock",
-    );
-    expect(selectDataSource({ mode: "development" })).toBe("unavailable");
-    expect(selectDataSource({ mode: "test", requestedSource: "mock" })).toBe(
-      "unavailable",
-    );
+  it("selects local only when explicitly requested and retains unavailable by default", () => {
+    expect(selectDataSource({ mode: "production", requestedSource: "local" })).toBe("local_analysis");
+    expect(selectDataSource({ mode: "development", requestedSource: "mock" })).toBe("development_mock");
+    expect(selectDataSource({ mode: "production" })).toBe("unavailable");
   });
 
-  it("never selects or loads the mock adapter in production", async () => {
-    const loadMock = vi.fn(async () => loadDevelopmentMock("released"));
-    const state = await resolveClass3PageState(
-      {
-        mode: "production",
-        requestedSource: "mock",
-        requestedFixture: "released",
-      },
-      loadMock,
-    );
-
-    expect(state).toEqual({ kind: "unavailable", message: "서비스 데이터 연결 전" });
-    expect(loadMock).not.toHaveBeenCalled();
+  it("loads the validated local payload at the configured URL", async () => {
+    const loadLocal = vi.fn(async () => syntheticClass3AnalysisPayload);
+    const state = await resolveClass3PageState({ mode: "development", requestedSource: "local", localAnalysisUrl: "/analysis.json" }, mockLoader, loadLocal);
+    expect(state).toEqual({ kind: "local_analysis", analysis: syntheticClass3AnalysisPayload });
+    expect(loadLocal).toHaveBeenCalledWith("/analysis.json");
   });
 
-  it("loads the explicitly selected development fixture", async () => {
-    const loadMock = vi.fn(async () => loadDevelopmentMock("empty"));
-    const state = await resolveClass3PageState(
-      {
-        mode: "development",
-        requestedSource: "mock",
-        requestedFixture: "empty",
-      },
-      loadMock,
-    );
-
-    expect(state.kind).toBe("fixture");
-    expect(loadMock).toHaveBeenCalledWith("empty");
+  it("uses the generated location only in explicitly local mode", async () => {
+    const loadLocal = vi.fn(async () => syntheticClass3AnalysisPayload);
+    await resolveClass3PageState({ mode: "production", requestedSource: "local" }, mockLoader, loadLocal);
+    expect(loadLocal).toHaveBeenCalledWith("/generated/class3-analysis.json");
   });
 
-  it("returns an explicit development error instead of another fixture", async () => {
-    const state = await resolveClass3PageState(
-      { mode: "development", requestedSource: "mock", requestedFixture: "unknown" },
-      async () => {
-        throw new Error("unknown fixture");
-      },
-    );
+  it("does not fall back to a mock when local loading fails", async () => {
+    const state = await resolveClass3PageState({ mode: "development", requestedSource: "local" }, mockLoader, async () => { throw new Error("bad payload"); });
+    expect(state.kind).toBe("error");
+    expect(mockLoader).not.toHaveBeenCalled();
+  });
 
-    expect(state).toEqual({
-      kind: "error",
-      message: "개발용 mock fixture를 불러오지 못했습니다.",
-    });
+  it("does not load either adapter when the source is unavailable", async () => {
+    const loadLocal = vi.fn(async () => syntheticClass3AnalysisPayload);
+    const state = await resolveClass3PageState({ mode: "production" }, mockLoader, loadLocal);
+    expect(state).toEqual({ kind: "unavailable", message: unavailable });
+    expect(loadLocal).not.toHaveBeenCalled();
   });
 });
