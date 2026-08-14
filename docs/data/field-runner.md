@@ -2,6 +2,10 @@
 
 Status: **PR-04A offline execution contract**
 
+For reproducible installation on an internet-blocked Windows PC, first create
+and verify the approved wheel/source bundle described in
+[Offline Windows field kit](offline-field-kit.md).
+
 The field runner is a standard-library `argparse` and `tomllib` wrapper around
 the already locked data-pipeline APIs. It does not define another Excel reader,
 join, reducer, checkpoint, Parquet writer, or artifact schema. It does not use
