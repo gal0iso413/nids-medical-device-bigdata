@@ -1,502 +1,67 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  ReleaseStatus,
-  SelectionItem,
-  SelectionType,
-} from "./contracts/class3Mock";
-import {
-  resolveCurrentClass3PageState,
-  type Class3PageState,
-} from "./dataSource/runtimeDataSource";
+import type { Class3SelectionCatalogRow } from "./contracts/class3Analysis";
+import type { ReleaseStatus, SelectionType } from "./contracts/class3Mock";
+import { resolveCurrentClass3PageState, type Class3PageState } from "./dataSource/runtimeDataSource";
 
-const statusLabels: Record<ReleaseStatus, string> = {
-  released: "공개 가능 상태 예시",
-  suppressed_small_cell: "소수 집단 억제 상태 예시",
-  suppressed_dominance: "우세도 억제 상태 예시",
-  suppressed_differencing: "차분 위험 억제 상태 예시",
-  insufficient_coverage: "데이터 범위 부족 상태 예시",
-  not_available: "제공 전 상태 예시",
-};
+type Period = { startMonth: string; endMonth: string };
+type Candidate = { id: string; type: SelectionType; label: string; parentLabel?: string | null };
+interface AppProps { initialState?: Class3PageState }
 
-const selectionTypeLabels: Record<SelectionType, string> = {
-  item_group: "품목군",
-  item_name: "품목명",
-};
+const typeLabel: Record<SelectionType, string> = { item_group: "품목군", item_name: "품목명" };
+const fixtureStatus: Record<ReleaseStatus, string> = { released: "공개 가능한 합성 mock 상태", suppressed_small_cell: "소수 집단 억제 상태", suppressed_dominance: "우세값 억제 상태", suppressed_differencing: "차분 위험 억제 상태", insufficient_coverage: "데이터 coverage 부족 상태", not_available: "제공 불가 상태" };
+const localBanner = "로컬 분석 데이터 · 공개 정책 미적용";
 
-interface AppProps {
-  initialState?: Class3PageState;
-}
-
-interface PeriodState {
-  startMonth: string;
-  endMonth: string;
-}
-
-function statusMessage(state: Class3PageState): string {
-  if (state.kind === "fixture") {
-    if (state.fixture.view_state === "empty") {
-      return "결과 없음 상태 예시";
-    }
-    return statusLabels[state.fixture.release_status];
-  }
-  return state.message;
-}
-
-function statusTone(state: Class3PageState): string {
-  if (state.kind === "error") {
-    return "danger";
-  }
-  if (state.kind !== "fixture") {
-    return "neutral";
-  }
-  if (state.fixture.view_state === "empty") {
-    return "empty";
-  }
-  if (state.fixture.release_status === "released") {
-    return "released";
-  }
-  if (state.fixture.release_status === "not_available") {
-    return "neutral";
-  }
-  return "attention";
-}
+function inPeriod(month: string, period: Period) { return (!period.startMonth || month >= period.startMonth.replace("-", "")) && (!period.endMonth || month <= period.endMonth.replace("-", "")); }
+function decimal(value: string | null) { return value ?? "검증된 값 없음"; }
+function flags(value: string) { return value || "없음"; }
 
 export default function App({ initialState }: AppProps) {
-  const [state, setState] = useState<Class3PageState>(
-    initialState ?? { kind: "loading", message: "화면 상태를 준비하는 중입니다." },
-  );
-  const initialFixture = initialState?.kind === "fixture" ? initialState.fixture : undefined;
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchIsOpen, setSearchIsOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>(
-    initialFixture?.selection_summary.selections.map((selection) => selection.id) ?? [],
-  );
-  const [periodDraft, setPeriodDraft] = useState<PeriodState>({
-    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
-    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
-  });
-  const [appliedPeriod, setAppliedPeriod] = useState<PeriodState>({
-    startMonth: initialFixture?.selection_summary.period.start_month ?? "",
-    endMonth: initialFixture?.selection_summary.period.end_month ?? "",
-  });
+  const [state, setState] = useState<Class3PageState>(initialState ?? { kind: "loading", message: "화면 상태를 준비하는 중입니다." });
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [draft, setDraft] = useState<Period>({ startMonth: "", endMonth: "" });
+  const [period, setPeriod] = useState<Period>({ startMonth: "", endMonth: "" });
+  useEffect(() => { if (!initialState) void resolveCurrentClass3PageState().then(setState); }, [initialState]);
 
+  const candidates = useMemo<Candidate[]>(() => {
+    if (state.kind === "fixture") return state.fixture.selection_summary.selections.map((row) => ({ id: row.id, type: row.type, label: row.label }));
+    if (state.kind === "local_analysis") return state.analysis.selection_catalog.map((row: Class3SelectionCatalogRow) => ({ id: row.selection_id, type: row.selection_type, label: row.label, parentLabel: row.parent_item_group_label }));
+    return [];
+  }, [state]);
+  const stateKey = state.kind === "fixture" ? `fixture:${state.fixture.data_version}:${state.fixture.view_state}` : state.kind === "local_analysis" ? `local:${state.analysis.analysis_schema_version}` : state.kind;
   useEffect(() => {
-    if (initialState) {
-      return;
-    }
+    if (state.kind === "fixture") { const next = { startMonth: state.fixture.selection_summary.period.start_month, endMonth: state.fixture.selection_summary.period.end_month }; setSelectedIds(state.fixture.selection_summary.selections.map((row) => row.id)); setDraft(next); setPeriod(next); }
+    else if (state.kind === "local_analysis") { const summaries = state.analysis.selection_coverage_summary; const next = { startMonth: summaries.map((row) => row.period_start).sort()[0] ?? "", endMonth: summaries.map((row) => row.period_end).sort().at(-1) ?? "" }; setSelectedIds([]); setDraft(next); setPeriod(next); }
+    else { setSelectedIds([]); setDraft({ startMonth: "", endMonth: "" }); setPeriod({ startMonth: "", endMonth: "" }); }
+    setSearch(""); setOpen(false);
+  }, [stateKey]);
 
-    let active = true;
-    void resolveCurrentClass3PageState().then((nextState) => {
-      if (active) {
-        setState(nextState);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [initialState]);
-
+  const selected = new Set(selectedIds);
+  const query = search.trim().toLocaleLowerCase();
+  const visibleCandidates = candidates.filter((row) => !query || [row.label, row.type, row.parentLabel ?? ""].some((value) => value.toLocaleLowerCase().includes(query)));
+  const selectedCandidates = candidates.filter((row) => selected.has(row.id));
+  const invalidPeriod = Boolean(draft.startMonth && draft.endMonth && draft.startMonth > draft.endMonth);
+  const local = state.kind === "local_analysis" ? state.analysis : undefined;
   const fixture = state.kind === "fixture" ? state.fixture : undefined;
-  const fixtureKey = fixture
-    ? `${fixture.data_version}:${fixture.release_status}:${fixture.view_state}`
-    : "no-fixture";
+  const metrics = local?.selection_month_metrics.filter((row) => selected.has(row.selection_id) && inPeriod(row.month, period)) ?? [];
+  const composition = local?.selection_month_composition.filter((row) => selected.has(row.selection_id) && inPeriod(row.month, period)) ?? [];
+  const coverage = local?.selection_coverage_summary.filter((row) => selected.has(row.selection_id)) ?? [];
+  const fixtureResults = fixture?.per_item_results.filter((row) => selected.has(row.selection_id)) ?? [];
+  const fixtureComposition = fixture?.portfolio_summary.released_composition?.entries.filter((row) => selected.has(row.selection_id)) ?? [];
+  const message = state.kind === "local_analysis" ? localBanner : state.kind === "fixture" ? (state.fixture.view_state === "empty" ? "결과 없음 상태" : fixtureStatus[state.fixture.release_status]) : state.message;
+  const add = (row: Candidate) => setSelectedIds((current) => current.includes(row.id) ? current : [...current, row.id]);
+  const remove = (row: Candidate) => setSelectedIds((current) => current.filter((id) => id !== row.id));
 
-  useEffect(() => {
-    if (!fixture) {
-      setSelectedIds([]);
-      setPeriodDraft({ startMonth: "", endMonth: "" });
-      setAppliedPeriod({ startMonth: "", endMonth: "" });
-      return;
-    }
-
-    const nextPeriod = {
-      startMonth: fixture.selection_summary.period.start_month,
-      endMonth: fixture.selection_summary.period.end_month,
-    };
-    setSelectedIds(fixture.selection_summary.selections.map((selection) => selection.id));
-    setPeriodDraft(nextPeriod);
-    setAppliedPeriod(nextPeriod);
-    setSearchQuery("");
-    setSearchIsOpen(false);
-  }, [fixtureKey]);
-
-  const candidateSelections = fixture?.selection_summary.selections ?? [];
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const selectedSelections = candidateSelections.filter((selection) =>
-    selectedIdSet.has(selection.id),
-  );
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
-  const filteredCandidates = candidateSelections.filter((selection) => {
-    if (!normalizedQuery) {
-      return true;
-    }
-    return [selection.label, selection.type, selectionTypeLabels[selection.type]]
-      .some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
-  });
-  const selectedResults = (fixture?.per_item_results ?? []).filter((result) =>
-    selectedIdSet.has(result.selection_id),
-  );
-  const selectedComposition = fixture?.portfolio_summary.released_composition?.entries
-    .filter((entry) => selectedIdSet.has(entry.selection_id)) ?? [];
-  const periodIsInvalid = Boolean(
-    periodDraft.startMonth
-      && periodDraft.endMonth
-      && periodDraft.startMonth > periodDraft.endMonth,
-  );
-  const periodCanApply = Boolean(
-    fixture
-      && periodDraft.startMonth
-      && periodDraft.endMonth
-      && !periodIsInvalid,
-  );
-
-  function addSelection(selection: SelectionItem) {
-    setSelectedIds((currentIds) =>
-      currentIds.includes(selection.id) ? currentIds : [...currentIds, selection.id],
-    );
-  }
-
-  function removeSelection(selection: SelectionItem) {
-    setSelectedIds((currentIds) => currentIds.filter((id) => id !== selection.id));
-  }
-
-  return (
-    <>
-      <a className="skip-link" href="#main-content">
-        본문 바로가기
-      </a>
-
-      <header className="service-bar">
-        <div className="service-bar__inner">
-          <div className="service-brand" aria-label="NIDS Class 3 공개 비교 서비스">
-            <span className="nids-mark" aria-hidden="true">NIDS</span>
-            <span className="service-brand__text">
-              <span className="service-kicker">의료기기 통합정보</span>
-              <span className="service-name">Class 3 공개 비교</span>
-            </span>
-          </div>
-          <span className={`environment-badge${fixture ? " is-synthetic" : ""}`}>
-            {fixture ? "합성 개발 데이터" : "서비스 데이터 미연결"}
-          </span>
-        </div>
-      </header>
-
-      <main id="main-content" className="app-shell" tabIndex={-1}>
-        <header className="hero">
-          <p className="eyebrow">공개 비교 분석</p>
-          <h1>업체·품목군 비교분석</h1>
-          <p className="hero-lead">
-            보고된 거래 활동을 품목별 결과와 선택 포트폴리오로 나누어 보는
-            공개 서비스의 화면 계약입니다.
-          </p>
-          <p className="data-boundary" role="note">
-            현재 production API는 연결되지 않았습니다. 표시 범위와 결측·억제
-            상태를 확인한 뒤 결과를 해석해야 합니다.
-          </p>
-        </header>
-
-        <div
-          className={`state-notice state-${statusTone(state)}`}
-          role="status"
-          aria-live="polite"
-        >
-          <strong>현재 화면 상태</strong>
-          <span>{statusMessage(state)}</span>
-        </div>
-
-        <section className="search-panel" aria-labelledby="search-heading">
-          <div className="section-heading">
-            <p className="section-kicker">비교 조건</p>
-            <h2 id="search-heading">품목군·품목명 검색</h2>
-          </div>
-          <label className="search-label">
-            품목군 또는 품목명 검색
-            <input
-              type="search"
-              placeholder="품목군·품목명을 한 번에 검색하는 영역"
-              value={searchQuery}
-              onChange={(event) => {
-                setSearchQuery(event.target.value);
-                setSearchIsOpen(true);
-              }}
-              onFocus={() => setSearchIsOpen(true)}
-              aria-describedby="search-help search-status"
-              aria-controls="selection-search-results"
-              aria-expanded={searchIsOpen}
-              autoComplete="off"
-              disabled={!fixture}
-            />
-          </label>
-          <p id="search-help" className="placeholder-note">
-            현재 synthetic fixture에 포함된 품목만 검색합니다.
-          </p>
-          <p id="search-status" className="sr-only" aria-live="polite">
-            {searchIsOpen
-              ? `검색 결과 ${filteredCandidates.length}개`
-              : "검색 결과 닫힘"}
-          </p>
-          {fixture && searchIsOpen && (
-            <ul
-              id="selection-search-results"
-              className="search-results"
-              aria-label="품목 검색 결과"
-            >
-              {filteredCandidates.length ? (
-                filteredCandidates.map((selection) => {
-                  const isSelected = selectedIdSet.has(selection.id);
-                  return (
-                    <li key={selection.id}>
-                      <button
-                        type="button"
-                        className="search-result-button"
-                        onClick={() => addSelection(selection)}
-                        disabled={isSelected}
-                      >
-                        <span className="type-badge">
-                          {selectionTypeLabels[selection.type]}
-                        </span>
-                        <span className="synthetic-label">{selection.label}</span>
-                        <span className="search-result-state">
-                          {isSelected ? "선택됨" : "선택"}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })
-              ) : (
-                <li className="search-empty" role="status">
-                  fixture 안에서 일치하는 품목을 찾지 못했습니다.
-                </li>
-              )}
-            </ul>
-          )}
-        </section>
-
-        <div className="filter-strip">
-          <section className="selection-panel" aria-labelledby="selection-heading">
-            <h2 id="selection-heading">선택 품목</h2>
-            {selectedSelections.length ? (
-              <ul className="selection-list">
-                {selectedSelections.map((selection) => (
-                  <li key={selection.id}>
-                    <span className="type-badge">
-                      {selectionTypeLabels[selection.type]}
-                    </span>
-                    <span className="synthetic-label">{selection.label}</span>
-                    <button
-                      type="button"
-                      className="remove-selection"
-                      onClick={() => removeSelection(selection)}
-                      aria-label={`${selection.label} 선택 제거`}
-                    >
-                      제거
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="empty-copy">선택된 품목이 없습니다.</p>
-            )}
-          </section>
-
-          <section className="period-panel" aria-labelledby="period-heading">
-            <h2 id="period-heading">기간 선택</h2>
-            <div className="field-grid">
-              <label>
-                시작 월
-                <input
-                  type="month"
-                  value={periodDraft.startMonth}
-                  onChange={(event) => setPeriodDraft((current) => ({
-                    ...current,
-                    startMonth: event.target.value,
-                  }))}
-                  aria-invalid={periodIsInvalid}
-                  aria-describedby={periodIsInvalid ? "period-error" : undefined}
-                  disabled={!fixture}
-                />
-              </label>
-              <label>
-                종료 월
-                <input
-                  type="month"
-                  value={periodDraft.endMonth}
-                  onChange={(event) => setPeriodDraft((current) => ({
-                    ...current,
-                    endMonth: event.target.value,
-                  }))}
-                  aria-invalid={periodIsInvalid}
-                  aria-describedby={periodIsInvalid ? "period-error" : undefined}
-                  disabled={!fixture}
-                />
-              </label>
-            </div>
-            {periodIsInvalid && (
-              <p id="period-error" className="field-error" role="alert">
-                시작 월은 종료 월보다 늦을 수 없습니다.
-              </p>
-            )}
-            <button
-              type="button"
-              className="period-apply"
-              disabled={!periodCanApply}
-              onClick={() => setAppliedPeriod(periodDraft)}
-            >
-              기간 적용
-            </button>
-            <p className="period-note" aria-live="polite">
-              화면 비교 범위: {appliedPeriod.startMonth || "미설정"} ~ {appliedPeriod.endMonth || "미설정"}
-              <span>기간을 바꿔도 mock 분석값은 재계산하지 않습니다.</span>
-            </p>
-          </section>
-        </div>
-
-        <section className="results-section" aria-labelledby="comparison-heading">
-          <div className="section-heading section-heading--rule">
-            <p className="section-kicker">품목별 보기</p>
-            <h2 id="comparison-heading">품목별 비교 결과</h2>
-          </div>
-          {selectedResults.length ? (
-            <div className="card-grid">
-              {selectedResults.map((result) => (
-                <article className="result-card" key={result.selection_id}>
-                  <div className="result-card__header">
-                    <h3>{selectionTypeLabels[result.selection_type]}</h3>
-                    <span className="status-chip">
-                      {statusLabels[result.release_status]}
-                    </span>
-                  </div>
-                  <p className="synthetic-label">{result.selection_id}</p>
-                  <p>{result.notice}</p>
-                  {result.released_content && (
-                    <dl className="released-content">
-                      <div><dt>보고된 거래 활동</dt><dd>{result.released_content.activity_label}</dd></div>
-                      <div><dt>공급 수량</dt><dd>{result.released_content.quantity_label}</dd></div>
-                      <div><dt>월별 추세</dt><dd>{result.released_content.trend_label}</dd></div>
-                    </dl>
-                  )}
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="empty-copy empty-copy--prominent">
-              {!selectedSelections.length
-                ? "선택된 품목이 없습니다. 검색 결과에서 품목을 선택해 주세요."
-                : fixture?.view_state === "empty"
-                ? "조건에 맞는 결과가 없습니다."
-                : "비교 결과를 제공할 수 없습니다."}
-            </p>
-          )}
-        </section>
-
-        <section className="trend-section" aria-labelledby="trend-heading">
-          <div className="section-heading">
-            <p className="section-kicker">기간별 보기</p>
-            <h2 id="trend-heading">월별 추세</h2>
-          </div>
-          <div className="placeholder-panel" aria-label="월별 추세 시각화 자리">
-            <strong>향후 monthly series 연결 영역</strong>
-            {selectedResults.length ? (
-              <ul className="trend-list">
-                {selectedResults.map((result) => (
-                  <li key={result.selection_id}>
-                    <span className="type-badge">{selectionTypeLabels[result.selection_type]}</span>
-                    <span className="synthetic-label">{result.selection_id}</span>
-                    {result.released_content ? (
-                      <span>{result.released_content.trend_label}</span>
-                    ) : (
-                      <span>{statusLabels[result.release_status]} — {result.notice}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span>선택된 품목의 추세 표시가 없습니다.</span>
-            )}
-            <span className="placeholder-note">실제 월별 series나 가짜 선 그래프는 포함하지 않습니다.</span>
-          </div>
-        </section>
-
-        <div className="insight-grid">
-          <section className="portfolio-panel" aria-labelledby="portfolio-heading">
-            <p className="section-kicker">구성 요약</p>
-            <h2 id="portfolio-heading">선택 포트폴리오 요약</h2>
-            <p>
-              {fixture?.portfolio_summary.notice ??
-                "포트폴리오 데이터가 연결되지 않았습니다."}
-            </p>
-            {selectedComposition.length > 0 && (
-              <ul className="composition-list">
-                {selectedComposition.map((entry) => (
-                  <li key={entry.selection_id}>
-                    <span className="synthetic-label">{entry.selection_id}</span>
-                    <span>{entry.share_label}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="placeholder-note">
-              {fixture?.portfolio_summary.released_composition?.non_additive_notice
-                ?? "품목별 수량과 집중도 지표를 서로 합산하지 않습니다."}
-            </p>
-          </section>
-
-          <section className="reach-panel" aria-labelledby="reach-heading">
-            <p className="section-kicker">관측 범위</p>
-            <h2 id="reach-heading">관측된 유통 도달 구조</h2>
-            <p>
-              {fixture?.observed_reach.notice ??
-                "관측된 도달 구조 데이터가 연결되지 않았습니다."}
-            </p>
-            <div className="reach-placeholder" aria-label="관측된 유통 도달 구조 자리">
-              <p>최종단 추적이 아닌 관측된 다음 단계의 구조를 표시할 영역입니다.</p>
-              {fixture?.observed_reach.released_stages && (
-                <ul className="reach-list">
-                  {fixture.observed_reach.released_stages.map((stage) => (
-                    <li key={stage.stage_label}>
-                      <span>{stage.stage_label}</span>
-                      <span>{stage.display_label}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <section className="coverage-section" aria-labelledby="coverage-heading">
-          <div className="section-heading">
-            <p className="section-kicker">공개 범위 확인</p>
-            <h2 id="coverage-heading">데이터 coverage·결측·억제 안내</h2>
-          </div>
-          {fixture ? (
-            <ul className="coverage-grid">
-              {fixture.coverage.field_states.map((field) => (
-                <li key={field.field}>
-                  <strong>{field.field}</strong>
-                  <span className="coverage-state">상태: {field.state}</span>
-                  <span>{field.notice}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-copy">
-              서비스 데이터 연결 전이므로 coverage를 제공할 수 없습니다.
-            </p>
-          )}
-        </section>
-
-        <footer className="methodology-footer" aria-label="버전 정보">
-          <h2>버전 정보</h2>
-          <dl>
-            <div><dt>Schema</dt><dd>{fixture?.schema_version ?? "not-connected"}</dd></div>
-            <div><dt>Data</dt><dd>{fixture?.data_version ?? "not-connected"}</dd></div>
-            <div><dt>Policy</dt><dd>{fixture?.policy_version ?? "not-approved"}</dd></div>
-          </dl>
-          {fixture && <p>{fixture.development_notice}</p>}
-        </footer>
-      </main>
-    </>
-  );
+  return <><a className="skip-link" href="#main-content">본문 바로가기</a><header className="service-bar"><div className="service-bar__inner"><div className="service-brand"><span className="nids-mark">NIDS</span><span className="service-brand__text"><span className="service-kicker">의료기기 통합정보</span><span className="service-name">Class 3 비교 분석</span></span></div><span className={`environment-badge${local ? "" : " is-synthetic"}`}>{local ? localBanner : "합성 개발 데이터 또는 서비스 데이터 미연결"}</span></div></header>
+    <main id="main-content" className="app-shell" tabIndex={-1}>
+      <header className="hero"><p className="eyebrow">비교 분석</p><h1>업체·품목군 비교분석</h1><p className="hero-lead">선택한 품목별 월별 공급 활동과 관측된 endpoint 구성을 표시합니다.</p><p className="data-boundary" role="note">로컬 분석은 공개 서비스 승인 또는 공개 억제 정책 적용 상태가 아닙니다. 공급 활동은 판매량·수요·시장 성장 지표가 아닙니다.</p></header>
+      <div className={`state-notice state-${state.kind === "error" ? "danger" : "neutral"}`} role="status"><strong>현재 화면 상태</strong><span>{message}</span></div>
+      <section className="search-panel" aria-labelledby="search-heading"><div className="section-heading"><p className="section-kicker">비교 조건</p><h2 id="search-heading">품목군/품목명 검색</h2></div><label className="search-label">품목군 또는 품목명 검색<input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setOpen(true); }} onFocus={() => setOpen(true)} disabled={!candidates.length} aria-controls="selection-search-results" aria-expanded={open} /></label><p className="placeholder-note">{local ? "전체 selection catalog를 검색합니다." : "합성 mock fixture의 선택 항목을 검색합니다."}</p>{open && <ul id="selection-search-results" className="search-results" aria-label="품목 검색 결과">{visibleCandidates.map((row) => <li key={row.id}><button type="button" className="search-result-button" disabled={selected.has(row.id)} onClick={() => add(row)}><span className="type-badge">{typeLabel[row.type]}</span><span className="synthetic-label">{row.label}</span>{row.type === "item_name" && row.parentLabel && <span>상위 품목군: {row.parentLabel}</span>}<span className="search-result-state">{selected.has(row.id) ? "선택됨" : "선택"}</span></button></li>)}</ul>}</section>
+      <div className="filter-strip"><section className="selection-panel" aria-labelledby="selection-heading"><h2 id="selection-heading">선택 품목</h2>{selectedCandidates.length ? <ul className="selection-list">{selectedCandidates.map((row) => <li key={row.id}><span className="type-badge">{typeLabel[row.type]}</span><span className="synthetic-label">{row.label}</span>{row.type === "item_name" && row.parentLabel && <span>상위 품목군: {row.parentLabel}</span>}<button type="button" className="remove-selection" onClick={() => remove(row)} aria-label={`${row.label} 선택 제거`}>제거</button></li>)}</ul> : <p className="empty-copy">선택한 품목이 없습니다.</p>}</section><section className="period-panel" aria-labelledby="period-heading"><h2 id="period-heading">기간 선택</h2><div className="field-grid"><label>시작 월<input type="month" value={draft.startMonth} onChange={(event) => setDraft((old) => ({ ...old, startMonth: event.target.value }))} disabled={!candidates.length} /></label><label>종료 월<input type="month" value={draft.endMonth} onChange={(event) => setDraft((old) => ({ ...old, endMonth: event.target.value }))} disabled={!candidates.length} /></label></div>{invalidPeriod && <p className="field-error" role="alert">시작 월은 종료 월보다 늦을 수 없습니다.</p>}<button type="button" className="period-apply" disabled={invalidPeriod || !draft.startMonth || !draft.endMonth} onClick={() => setPeriod(draft)}>기간 적용</button><p className="period-note">화면 비교 범위: {period.startMonth || "미설정"} ~ {period.endMonth || "미설정"}</p></section></div>
+      <section className="results-section" aria-labelledby="comparison-heading"><div className="section-heading section-heading--rule"><p className="section-kicker">품목별 보기</p><h2 id="comparison-heading">품목별 비교 결과</h2></div>{local && metrics.length ? <div className="card-grid">{metrics.map((row) => <article className="result-card" key={`${row.selection_id}:${row.month}`}><div className="result-card__header"><h3>{row.month} · {typeLabel[row.selection_type]}</h3><span className="synthetic-label">{row.selection_id}</span></div><dl className="released-content"><div><dt>월별 거래 건수</dt><dd>{row.tx_count ?? "없음"}</dd></div><div><dt>공급금액</dt><dd>{decimal(row.amount_sum_clean)}</dd></div><div><dt>원시 공급수량</dt><dd>{decimal(row.raw_supply_qty_sum)}</dd></div>{row.piece_qty_sum !== null && <div><dt>낱개수량 (검증됨)</dt><dd>{row.piece_qty_sum}</dd></div>}<div><dt>금액 coverage</dt><dd>{decimal(row.amount_coverage)}</dd></div><div><dt>수량 coverage</dt><dd>{decimal(row.raw_supply_qty_coverage)}</dd></div><div><dt>공급자 수 (월별)</dt><dd>{row.unique_supplier_count ?? "없음"}</dd></div><div><dt>수령자 수 (월별)</dt><dd>{row.unique_receiver_count ?? "없음"}</dd></div><div><dt>quality flags</dt><dd>{flags(row.quality_flags)}</dd></div></dl></article>)}</div> : fixture && fixtureResults.length ? <div className="card-grid">{fixtureResults.map((row) => <article className="result-card" key={row.selection_id}><div className="result-card__header"><h3>{typeLabel[row.selection_type]}</h3><span className="status-chip">{fixtureStatus[row.release_status]}</span></div><p className="synthetic-label">{row.selection_id}</p><p>{row.notice}</p>{row.released_content && <dl className="released-content"><div><dt>보고된 거래 활동</dt><dd>{row.released_content.activity_label}</dd></div><div><dt>공급 수량</dt><dd>{row.released_content.quantity_label}</dd></div><div><dt>월별 추세</dt><dd>{row.released_content.trend_label}</dd></div></dl>}</article>)}</div> : <p className="empty-copy empty-copy--prominent">{selectedCandidates.length ? "적용 기간에 표시할 선택 품목 결과가 없습니다." : "검색 결과에서 품목을 선택해 주세요."}</p>}</section>
+      {fixture && <><section className="trend-section" aria-labelledby="fixture-trend-heading"><div className="section-heading"><p className="section-kicker">기간별 보기</p><h2 id="fixture-trend-heading">월별 추세</h2></div>{fixtureResults.length ? <ul className="trend-list">{fixtureResults.map((row) => <li key={row.selection_id}><span className="type-badge">{typeLabel[row.selection_type]}</span><span className="synthetic-label">{row.selection_id}</span><span>{row.released_content?.trend_label ?? `${fixtureStatus[row.release_status]} · ${row.notice}`}</span></li>)}</ul> : <p className="empty-copy">선택한 품목의 추세 표시가 없습니다.</p>}</section><section className="coverage-section" aria-labelledby="fixture-coverage-heading"><div className="section-heading"><p className="section-kicker">합성 fixture coverage</p><h2 id="fixture-coverage-heading">데이터 coverage·결측·억제 안내</h2></div><ul className="coverage-grid">{fixture.coverage.field_states.map((row) => <li key={row.field}><strong>{row.field}</strong><span>상태: {row.state}</span><span>{row.notice}</span></li>)}</ul>{fixtureComposition.length > 0 && <ul className="composition-list">{fixtureComposition.map((row) => <li key={row.selection_id}><span className="synthetic-label">{row.selection_id}</span><span>{row.share_label}</span></li>)}</ul>}</section></>}
+      {local && <><section className="trend-section" aria-labelledby="composition-heading"><div className="section-heading"><p className="section-kicker">endpoint 관측 구성</p><h2 id="composition-heading">업종·지역 endpoint composition</h2></div><p className="data-boundary">이는 관측된 공급자·수령자 endpoint 구성입니다. 최종 의료기관 추적을 의미하지 않습니다.</p>{composition.length ? <ul className="composition-list">{composition.map((row) => <li key={`${row.selection_id}:${row.month}:${row.dimension}:${row.dimension_value}`}><span>{row.month} · {row.dimension}</span><span>{row.dimension_value}{row.is_unknown ? " (unknown)" : ""}</span><span>{row.endpoint_count ?? "없음"} / {row.denominator_endpoint_count ?? "없음"} · {decimal(row.endpoint_share)} · flags: {flags(row.quality_flags)}</span></li>)}</ul> : <p className="empty-copy">선택한 품목의 endpoint composition이 없습니다.</p>}</section><section className="coverage-section" aria-labelledby="coverage-heading"><div className="section-heading"><p className="section-kicker">coverage 및 결측</p><h2 id="coverage-heading">missing month와 품질 안내</h2></div>{coverage.length ? <ul className="coverage-grid">{coverage.map((row) => <li key={row.selection_id}><strong>{row.selection_id}</strong><span>포함 월: {row.included_months.join(", ") || "없음"}</span><span>누락 월: {row.missing_months.join(", ") || "없음"}</span><span>금액 valid rate: {decimal(row.amount_valid_rate)}</span><span>원시 수량 valid rate: {decimal(row.raw_supply_qty_valid_rate)}</span><span>낱개수량 valid rate: {decimal(row.piece_qty_valid_rate)}</span><span>quality flags: {flags(row.quality_flags)}</span></li>)}</ul> : <p className="empty-copy">선택한 품목의 coverage 요약이 없습니다.</p>}</section></>}
+      <footer className="methodology-footer"><h2>버전 정보</h2><dl><div><dt>Schema</dt><dd>{local?.analysis_schema_version ?? fixture?.schema_version ?? "not-connected"}</dd></div><div><dt>Data</dt><dd>{local ? "로컬 payload별 coverage summary 참조" : fixture?.data_version ?? "not-connected"}</dd></div><div><dt>Policy</dt><dd>{local ? "공개 정책 미적용" : fixture?.policy_version ?? "not-approved"}</dd></div></dl></footer>
+    </main></>;
 }

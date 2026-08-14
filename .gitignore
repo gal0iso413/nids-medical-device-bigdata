@@ -52,3 +52,4 @@ PROGRESS.md
 .cursor/
 .agents/skills/
 class_1_anomaly_detection/data/parquet/
+web/class3_public/public/generated/
