@@ -59,3 +59,4 @@ web/class1_internal/dist/
 !web/class1_internal/package.json
 !web/class1_internal/package-lock.json
 !web/class1_internal/tsconfig.json
+!tests/fixtures/local_artifact_handoff/canonical-fixture.json
