@@ -36,6 +36,7 @@ from data_pipeline.storage.monthly_fact_parquet import (
 RUNNER_SCHEMA_VERSION: Final = "1.0.0"
 QA_FILENAME: Final = "restricted-qa.json"
 SERVICE_FILENAME: Final = "internal-service.json"
+ONE_HOP_GRAPH_FILENAME: Final = "internal-one-hop-graph.json"
 MANIFEST_FILENAME: Final = "run-manifest.json"
 
 
@@ -52,6 +53,7 @@ class Class1OfflineAnchorConfig:
     parquet_root: Path
     output_root: Path
     anchor_month: str
+    selected_entity_id: str
     region_vocabulary: tuple[str, ...]
     model_version: str
     seed: int
@@ -74,7 +76,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
 
 
 def _fingerprint(value: Any) -> str:
-    return sha256(_canonical_json_bytes(value)).hexdigest()
+    return sha256(_canonical_json_bytes(_json_value(value))).hexdigest()
 
 
 def _json_value(value: Any) -> Any:
@@ -128,6 +130,8 @@ def _validate_config(config: Class1OfflineAnchorConfig) -> tuple[str, ...]:
     months = _months(config.anchor_month)
     if _paths_overlap(config.parquet_root, config.output_root):
         raise Class1OfflineAnchorRunError("output_root and parquet_root must be distinct and non-nested")
+    if not config.selected_entity_id.strip():
+        raise Class1OfflineAnchorRunError("selected_entity_id is required")
     if not config.region_vocabulary:
         raise Class1OfflineAnchorRunError("region_vocabulary must be explicitly configured and non-empty")
     if tuple(sorted(set(config.region_vocabulary))) != config.region_vocabulary:
@@ -166,17 +170,19 @@ def _atomic_write(path: Path, payload: bytes) -> None:
 
 
 def _existing_status(
-    *, qa_path: Path, service_path: Path, manifest_path: Path, run_fingerprint: str,
-    qa_sha256: str, service_sha256: str,
+    *, payload_paths: dict[str, Path], manifest_path: Path, run_fingerprint: str,
+    output_sha256: dict[str, str],
 ) -> str | None:
-    existing = (qa_path.exists(), service_path.exists(), manifest_path.exists())
+    existing = tuple(path.exists() for path in (*payload_paths.values(), manifest_path))
     if not any(existing):
         return None
-    if existing == (True, True, False):
-        if sha256(qa_path.read_bytes()).hexdigest() == qa_sha256 and sha256(service_path.read_bytes()).hexdigest() == service_sha256:
+    payload_exists = existing[:-1]
+    manifest_exists = existing[-1]
+    if all(payload_exists) and not manifest_exists:
+        if all(sha256(path.read_bytes()).hexdigest() == output_sha256[name] for name, path in payload_paths.items()):
             return "recover"
         raise Class1OfflineAnchorRunConflictError("existing partial payload differs; refusing overwrite")
-    if existing != (True, True, True):
+    if not all(payload_exists) or not manifest_exists:
         raise Class1OfflineAnchorRunConflictError("existing run is incomplete; refusing overwrite")
     try:
         manifest_bytes = manifest_path.read_bytes()
@@ -186,11 +192,47 @@ def _existing_status(
     if manifest_bytes != _canonical_json_bytes(manifest):
         raise Class1OfflineAnchorRunConflictError("existing run manifest is not canonical; refusing overwrite")
     if (manifest.get("run_fingerprint") != run_fingerprint
-            or manifest.get("output_sha256") != {QA_FILENAME: qa_sha256, SERVICE_FILENAME: service_sha256}
-            or sha256(qa_path.read_bytes()).hexdigest() != qa_sha256
-            or sha256(service_path.read_bytes()).hexdigest() != service_sha256):
+            or manifest.get("output_sha256") != output_sha256
+            or any(sha256(path.read_bytes()).hexdigest() != output_sha256[name] for name, path in payload_paths.items())):
         raise Class1OfflineAnchorRunConflictError("existing run has different lineage, settings, or content; refusing overwrite")
     return "unchanged"
+
+
+def _one_hop_graph_payload(
+    *, config: Class1OfflineAnchorConfig, graph: Any, entity_metadata: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    selected = config.selected_entity_id
+    scoped_edges = graph.edges.loc[
+        graph.edges["src_company_id"].eq(selected) | graph.edges["dst_company_id"].eq(selected)
+    ].sort_values(["src_company_id", "dst_company_id"], kind="stable")
+    node_ids = tuple(sorted(set(scoped_edges["src_company_id"]) | set(scoped_edges["dst_company_id"])))
+    nodes = []
+    for entity_id in node_ids:
+        metadata = entity_metadata[entity_id]
+        nodes.append({
+            "entity_id": entity_id,
+            "selected": entity_id == selected,
+            "role_group": metadata["role_group"],
+            "region": metadata["region"],
+            "region_missing_or_conflict": bool(metadata["region_missing_or_conflict"]),
+        })
+    edges = _json_value(scoped_edges.to_dict("records"))
+    return {
+        "graph_scope": "one_hop",
+        "selected_entity_id": selected,
+        "anchor_month": graph.anchor_month,
+        "window_months": graph.window_months,
+        "nodes": nodes,
+        "edges": edges,
+        "graph_summary": {
+            "selected_node_count": 1,
+            "one_hop_counterparty_count": max(0, len(node_ids) - 1),
+            "edge_count": len(edges),
+            "self_loop_excluded_count": graph.self_loop_count,
+            "truncated": False,
+            "truncation_reason": None,
+        },
+    }
 
 
 def _insufficient_payload(config: Class1OfflineAnchorConfig, graph: Any, features: pd.DataFrame, feature_manifest: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -217,13 +259,21 @@ def run_class1_offline_anchor(
     lineage = [_lineage_item(item) for item in verifications]
     source_versions = tuple(sorted(fact["source_version"].dropna().astype(str).unique()))
     graph = build_model_graph(fact, anchor_month=config.anchor_month)
+    if config.selected_entity_id not in graph.nodes:
+        raise Class1OfflineAnchorRunError("selected_entity_id is absent from the anchor model graph")
+    graph_features, graph_feature_manifest = build_gadnr_features(
+        fact, graph, region_vocabulary=config.region_vocabulary,
+    )
+    one_hop_payload = _one_hop_graph_payload(
+        config=config, graph=graph,
+        entity_metadata=graph_feature_manifest["entity_metadata"],
+    )
     if len(graph.nodes) < config.minimum_node_count or len(graph.edges) < config.minimum_edge_count:
-        features, feature_manifest = build_gadnr_features(fact, graph, region_vocabulary=config.region_vocabulary)
-        qa_payload, service_payload = _insufficient_payload(config, graph, features, feature_manifest)
+        qa_payload, service_payload = _insufficient_payload(config, graph, graph_features, graph_feature_manifest)
         run_status = "insufficient_graph"
         pipeline_manifest = {
             "feature_version": FEATURE_VERSION,
-            "feature_fingerprint": feature_manifest["feature_fingerprint"],
+            "feature_fingerprint": graph_feature_manifest["feature_fingerprint"],
             "graph_summary": {"node_count": len(graph.nodes), "edge_count": len(graph.edges), "self_loop_count": graph.self_loop_count},
             "graph_fingerprint": _fingerprint({
                 "nodes": graph.nodes, "edges": graph.edges.to_dict("records"),
@@ -257,9 +307,15 @@ def run_class1_offline_anchor(
         pipeline_manifest = result.manifest
     qa_bytes = _canonical_json_bytes(qa_payload)
     service_bytes = _canonical_json_bytes(service_payload)
-    output_sha256 = {QA_FILENAME: sha256(qa_bytes).hexdigest(), SERVICE_FILENAME: sha256(service_bytes).hexdigest()}
+    one_hop_bytes = _canonical_json_bytes(one_hop_payload)
+    output_sha256 = {
+        QA_FILENAME: sha256(qa_bytes).hexdigest(),
+        SERVICE_FILENAME: sha256(service_bytes).hexdigest(),
+        ONE_HOP_GRAPH_FILENAME: sha256(one_hop_bytes).hexdigest(),
+    }
     run_input = {
         "runner_schema_version": RUNNER_SCHEMA_VERSION, "anchor_month": config.anchor_month,
+        "selected_entity_id": config.selected_entity_id,
         "required_months": months, "partition_lineage": lineage,
         "source_versions": source_versions,
         "region_vocabulary": config.region_vocabulary, "model_version": config.model_version,
@@ -272,19 +328,26 @@ def run_class1_offline_anchor(
     }
     run_fingerprint = _fingerprint(run_input)
     run_directory = config.output_root / f"anchor_month={config.anchor_month}"
-    qa_path, service_path, manifest_path = (run_directory / QA_FILENAME, run_directory / SERVICE_FILENAME, run_directory / MANIFEST_FILENAME)
-    existing = _existing_status(qa_path=qa_path, service_path=service_path, manifest_path=manifest_path,
-                                run_fingerprint=run_fingerprint, qa_sha256=output_sha256[QA_FILENAME], service_sha256=output_sha256[SERVICE_FILENAME])
+    payload_paths = {
+        QA_FILENAME: run_directory / QA_FILENAME,
+        SERVICE_FILENAME: run_directory / SERVICE_FILENAME,
+        ONE_HOP_GRAPH_FILENAME: run_directory / ONE_HOP_GRAPH_FILENAME,
+    }
+    manifest_path = run_directory / MANIFEST_FILENAME
+    existing = _existing_status(payload_paths=payload_paths, manifest_path=manifest_path,
+                                run_fingerprint=run_fingerprint, output_sha256=output_sha256)
     if existing == "unchanged":
         return Class1OfflineAnchorRunResult("unchanged", run_status, run_directory, manifest_path, run_fingerprint)
     manifest = {
         **run_input, "run_fingerprint": run_fingerprint, "pipeline_manifest": pipeline_manifest,
-        "output_sha256": output_sha256, "output_files": {QA_FILENAME: f"anchor_month={config.anchor_month}/{QA_FILENAME}", SERVICE_FILENAME: f"anchor_month={config.anchor_month}/{SERVICE_FILENAME}"},
+        "output_sha256": output_sha256,
+        "output_files": {name: f"anchor_month={config.anchor_month}/{name}" for name in payload_paths},
         "scope": "local_internal_only", "public_policy_state": "not_applied", "suppression_policy_state": "not_evaluated",
     }
     if existing != "recover":
-        _atomic_write(qa_path, qa_bytes)
-        _atomic_write(service_path, service_bytes)
+        _atomic_write(payload_paths[QA_FILENAME], qa_bytes)
+        _atomic_write(payload_paths[SERVICE_FILENAME], service_bytes)
+        _atomic_write(payload_paths[ONE_HOP_GRAPH_FILENAME], one_hop_bytes)
     _atomic_write(manifest_path, _canonical_json_bytes(manifest))
     return Class1OfflineAnchorRunResult("recovered" if existing == "recover" else "written", run_status, run_directory, manifest_path, run_fingerprint)
 
@@ -294,13 +357,13 @@ def load_config(path: Path) -> Class1OfflineAnchorConfig:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Class1OfflineAnchorRunError("config must be readable JSON") from exc
-    required = {"parquet_root", "output_root", "anchor_month", "region_vocabulary", "model_version", "seed", "minimum_role_sample"}
+    required = {"parquet_root", "output_root", "anchor_month", "selected_entity_id", "region_vocabulary", "model_version", "seed", "minimum_role_sample"}
     if set(data) - (required | {"minimum_node_count", "minimum_edge_count"}) or not required.issubset(data):
         raise Class1OfflineAnchorRunError("config has missing or unsupported fields")
     vocabulary = data["region_vocabulary"]
     if not isinstance(vocabulary, list) or not all(isinstance(value, str) for value in vocabulary):
         raise Class1OfflineAnchorRunError("region_vocabulary must be a string array")
-    return Class1OfflineAnchorConfig(Path(data["parquet_root"]), Path(data["output_root"]), data["anchor_month"], tuple(vocabulary), data["model_version"], data["seed"], data["minimum_role_sample"], data.get("minimum_node_count", 2), data.get("minimum_edge_count", 1))
+    return Class1OfflineAnchorConfig(Path(data["parquet_root"]), Path(data["output_root"]), data["anchor_month"], data["selected_entity_id"], tuple(vocabulary), data["model_version"], data["seed"], data["minimum_role_sample"], data.get("minimum_node_count", 2), data.get("minimum_edge_count", 1))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -10,6 +10,7 @@ import pandas as pd
 
 from class_1_anomaly_detection.src.offline_anchor_runner import (
     MANIFEST_FILENAME,
+    ONE_HOP_GRAPH_FILENAME,
     QA_FILENAME,
     SERVICE_FILENAME,
     Class1OfflineAnchorConfig,
@@ -47,17 +48,18 @@ def _fact(months, *, self_loops=False):
 class OfflineAnchorRunnerTests(unittest.TestCase):
     months = ("202401", "202402", "202403", "202404", "202405", "202406")
 
-    def _roots(self, *, self_loops=False, months=None):
+    def _roots(self, *, self_loops=False, months=None, fact=None):
         temporary = tempfile.TemporaryDirectory(dir=Path.cwd())
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         parquet_root = root / "parquet"
-        write_monthly_fact_partitions(_fact(months or self.months, self_loops=self_loops), parquet_root)
+        write_monthly_fact_partitions(fact if fact is not None else _fact(months or self.months, self_loops=self_loops), parquet_root)
         return parquet_root, root / "output"
 
     def _config(self, parquet_root, output_root, **kwargs):
         values = {
             "parquet_root": parquet_root, "output_root": output_root, "anchor_month": "202406",
+            "selected_entity_id": "a",
             "region_vocabulary": ("11", "26"), "model_version": "gadnr-test-v1",
             "seed": 7, "minimum_role_sample": 1,
         }
@@ -78,6 +80,31 @@ class OfflineAnchorRunnerTests(unittest.TestCase):
         self.assertIn("raw_score", qa["qa_results"][0])
         self.assertNotIn("raw_score", json.dumps(service, sort_keys=True))
         self.assertEqual(len(json.loads(result.manifest_path.read_text(encoding="utf-8"))["partition_lineage"]), 6)
+
+    def test_one_hop_graph_keeps_only_selected_inbound_outbound_edges_and_contract_fields(self):
+        fact = _fact(self.months)
+        extra = _fact(("202404", "202405", "202406"))
+        extra.loc[:, "product_id"] = [f"p3:{index + 100:064d}" for index in range(len(extra))]
+        extra.loc[:, "src_company_id"] = pd.Series(["b", "a", "c"], dtype="string")
+        extra.loc[:, "dst_company_id"] = pd.Series(["a", "c", "d"], dtype="string")
+        self_loop = _fact(("202406",), self_loops=True)
+        self_loop.loc[:, "product_id"] = "p3:" + "200".zfill(64)
+        parquet_root, output_root = self._roots(fact=pd.concat([fact, extra, self_loop], ignore_index=True))
+        result = run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=self._scorer)
+        payload = json.loads((result.run_directory / "internal-one-hop-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["graph_scope"], "one_hop")
+        self.assertEqual({(edge["src_company_id"], edge["dst_company_id"]) for edge in payload["edges"]}, {("a", "b"), ("b", "a"), ("a", "c")})
+        self.assertTrue(all("amount_sum_clean" in edge and "raw_supply_qty_sum" in edge and "piece_qty_sum" in edge for edge in payload["edges"]))
+        self.assertTrue(all("amount_valid_rate" in edge and "raw_supply_qty_valid_rate" in edge and "piece_qty_valid_rate" in edge for edge in payload["edges"]))
+        self.assertNotIn("raw_score", json.dumps(payload, sort_keys=True))
+        self.assertNotIn("raw_score", (result.run_directory / SERVICE_FILENAME).read_text(encoding="utf-8"))
+        self.assertEqual(payload["graph_summary"]["self_loop_excluded_count"], 1)
+
+    def test_selected_entity_must_be_in_anchor_graph_without_creating_output(self):
+        parquet_root, output_root = self._roots()
+        with self.assertRaisesRegex(Class1OfflineAnchorRunError, "absent"):
+            run_class1_offline_anchor(self._config(parquet_root, output_root, selected_entity_id="missing"), scorer=self._scorer)
+        self.assertFalse(output_root.exists())
 
     def test_missing_month_blocks_before_output(self):
         parquet_root, output_root = self._roots(months=self.months[:-1])
@@ -113,6 +140,8 @@ class OfflineAnchorRunnerTests(unittest.TestCase):
         run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=self._scorer)
         with self.assertRaises(Class1OfflineAnchorRunConflictError):
             run_class1_offline_anchor(self._config(parquet_root, output_root, seed=8), scorer=self._scorer)
+        with self.assertRaises(Class1OfflineAnchorRunConflictError):
+            run_class1_offline_anchor(self._config(parquet_root, output_root, selected_entity_id="b"), scorer=self._scorer)
 
     def test_matching_payloads_recover_missing_manifest_only(self):
         parquet_root, output_root = self._roots()
@@ -128,10 +157,10 @@ class OfflineAnchorRunnerTests(unittest.TestCase):
             run_class1_offline_anchor(self._config(parquet_root, parquet_root / "output"), scorer=self._scorer)
 
     def test_insufficient_graph_is_service_safe_without_calling_scorer(self):
-        parquet_root, output_root = self._roots(self_loops=True)
+        parquet_root, output_root = self._roots()
         def forbidden(*_args):
             raise AssertionError("scorer must not run for an insufficient graph")
-        result = run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=forbidden)
+        result = run_class1_offline_anchor(self._config(parquet_root, output_root, minimum_edge_count=2), scorer=forbidden)
         self.assertEqual((result.run_status, result.status), ("insufficient_graph", "written"))
         service = json.loads((result.run_directory / SERVICE_FILENAME).read_text(encoding="utf-8"))
         self.assertEqual(service["service_results"], [])
@@ -142,5 +171,13 @@ class OfflineAnchorRunnerTests(unittest.TestCase):
         run_directory = output_root / "anchor_month=202406"
         run_directory.mkdir(parents=True)
         (run_directory / QA_FILENAME).write_bytes(b"{}")
+        with self.assertRaises(Class1OfflineAnchorRunConflictError):
+            run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=self._scorer)
+
+    def test_missing_graph_or_graph_checksum_mismatch_is_blocked(self):
+        parquet_root, output_root = self._roots()
+        first = run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=self._scorer)
+        graph_path = first.run_directory / ONE_HOP_GRAPH_FILENAME
+        graph_path.unlink()
         with self.assertRaises(Class1OfflineAnchorRunConflictError):
             run_class1_offline_anchor(self._config(parquet_root, output_root), scorer=self._scorer)

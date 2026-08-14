@@ -11,6 +11,7 @@ Create a config outside the repository (paths below are examples):
   "parquet_root": "D:/nids/monthly-fact",
   "output_root": "C:/Users/example/Documents/Projects/NIDS/cursor/class_1_anomaly_detection/output/offline-anchor",
   "anchor_month": "202406",
+  "selected_entity_id": "internal-company-id",
   "region_vocabulary": ["11", "26"],
   "model_version": "gadnr-internal-1",
   "seed": 17,
@@ -31,7 +32,9 @@ anchor minus five through the anchor itself to pass full checksum verification.
 
 It writes only ignored, internal artifacts below `output_root/anchor_month=…`:
 `restricted-qa.json` contains raw scores and review evidence; `internal-service.json`
-uses the existing Class 1 service serializer and has no raw score; and
+uses the existing Class 1 service serializer and has no raw score;
+`internal-one-hop-graph.json` contains only the selected entity's direct,
+directed model-graph relationships and has no raw score; and
 `run-manifest.json` records relative source lineage, checksums, configuration,
 fingerprints, output hashes, and its local/internal-only scope. Repeating the
 same run is unchanged. Different input lineage, configuration, or content for
