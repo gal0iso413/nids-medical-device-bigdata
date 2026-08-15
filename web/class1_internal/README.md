@@ -9,13 +9,13 @@ Use Node `^20.19.0 || ^22.12.0 || >=24.0.0` and npm `>=10`.
 ```powershell
 npm ci
 $env:VITE_CLASS1_DATA_SOURCE = "local"
-$env:VITE_CLASS1_SERVICE_URL = "/generated/internal-service.json"
-$env:VITE_CLASS1_GRAPH_URL = "/generated/internal-one-hop-graph.json"
+$env:VITE_CLASS1_HANDOFF_URL = "/generated/class1-current.json"
 npm run dev
 ```
 
-The generated files belong under `public/generated/` and are ignored. The
-offline runner creates the JSON; this app does not create or modify it. Local
+The generated handoff belongs under `public/generated/` and is ignored. The
+publish command writes a current manifest last; this app reads that marker then
+only its immutable generation files. The offline runner creates the source JSON; this app does not create or modify it. Local
 analysis is internal-only and does not indicate a public release or approval.
 Missing URLs, loading failures, invalid payloads, and service/graph entity
 mismatches show an error and never fall back to mock data. Development fixtures,

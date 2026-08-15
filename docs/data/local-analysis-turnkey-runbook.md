@@ -64,8 +64,7 @@ $env:VITE_CLASS3_DATA_SOURCE = "local"
 npm --prefix web/class3_public run dev
 
 $env:VITE_CLASS1_DATA_SOURCE = "local"
-$env:VITE_CLASS1_SERVICE_URL = "/generated/internal-service.json"
-$env:VITE_CLASS1_GRAPH_URL = "/generated/internal-one-hop-graph.json"
+$env:VITE_CLASS1_HANDOFF_URL = "/generated/class1-current.json"
 npm --prefix web/class1_internal run dev
 ```
 
