@@ -304,6 +304,7 @@ def run_gadnr(
     try:
         import torch
         from torch_geometric.data import Data
+        from torch_geometric.nn.models import GCN
         from pygod.detector import GADNR
     except ImportError as exc:
         raise RuntimeError(
@@ -312,7 +313,28 @@ def run_gadnr(
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    model = GADNR(num_layers=1, batch_size=0, epoch=100, random_state=seed)
+
+    class GADNRCompatibleGCN(GCN):
+        """Consume only PyGOD 1.1.0's incorrectly forwarded ``tot_nodes``.
+
+        PyGOD 1.1.0 passes its GAD-NR bookkeeping argument to the backbone
+        constructor.  PyG's ``GCN`` correctly forwards that unknown keyword
+        to ``GCNConv``, where it fails.  This local backbone is used only for
+        this invocation and deliberately forwards every other argument to
+        PyG unchanged, so unexpected keywords remain errors.
+        """
+
+        def __init__(self, *args: Any, tot_nodes: int | None = None, **kwargs: Any) -> None:
+            del tot_nodes
+            super().__init__(*args, **kwargs)
+
+    model = GADNR(
+        num_layers=1,
+        batch_size=0,
+        epoch=100,
+        random_state=seed,
+        backbone=GADNRCompatibleGCN,
+    )
     x = torch.tensor(features.to_numpy(dtype="float64"), dtype=torch.float32)
     edge = torch.tensor(edge_index, dtype=torch.long).reshape(2, -1).contiguous()
     model.fit(Data(x=x, edge_index=edge))
