@@ -9,7 +9,7 @@ import pandas as pd
 from class_1_anomaly_detection.src.offline_anchor_runner import Class1OfflineAnchorConfig, run_class1_offline_anchor
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
 from data_pipeline.offline.class3_analysis_export import Class3SelectionRequest, export_class3_analysis
-from data_pipeline.offline.local_analysis_tools import inventory_monthly_fact, verify_class1_artifact, verify_class3_artifact
+from data_pipeline.offline.local_analysis_tools import inventory_monthly_fact, publish_class1_web_artifact, verify_class1_artifact, verify_class1_web_artifact, verify_class3_artifact
 from data_pipeline.storage.monthly_fact_parquet import write_monthly_fact_partitions
 
 
@@ -33,3 +33,7 @@ class LocalAnalysisToolsTests(unittest.TestCase):
             result = run_class1_offline_anchor(Class1OfflineAnchorConfig(parquet, root / "output", "202406", "synthetic-a", ("11", "26"), "synthetic", 7, 1, 2, 2))
             verified = verify_class1_artifact(output_root=root / "output", anchor_month="202406")
             self.assertEqual(verified["run_status"], result.run_status)
+            published = publish_class1_web_artifact(output_root=root / "output", web_public_root=root / "web-public", anchor_month="202406")
+            self.assertEqual(published["status"], "written")
+            self.assertEqual(verify_class1_web_artifact(web_public_root=root / "web-public", anchor_month="202406", selected_entity_id="synthetic-a")["run_status"], "insufficient_graph")
+            self.assertEqual(publish_class1_web_artifact(output_root=root / "output", web_public_root=root / "web-public", anchor_month="202406")["status"], "unchanged")

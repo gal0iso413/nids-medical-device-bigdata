@@ -8,8 +8,14 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+import shutil
+import sqlite3
+import tempfile
+from typing import Any, Sequence
+
+import pyarrow.parquet as pq
 
 from class_1_anomaly_detection.src.offline_anchor_runner import (
     MANIFEST_FILENAME as CLASS1_MANIFEST_FILENAME,
@@ -22,7 +28,7 @@ from data_pipeline.offline.class3_analysis_export import (
     MANIFEST_FILENAME as CLASS3_MANIFEST_FILENAME,
     PAYLOAD_FILENAME as CLASS3_PAYLOAD_FILENAME,
 )
-from data_pipeline.storage.monthly_fact_parquet import read_monthly_fact_partitions
+from data_pipeline.storage.monthly_fact_parquet import DATASET_NAME, PARQUET_FILENAME
 
 
 class LocalAnalysisToolError(RuntimeError):
@@ -44,40 +50,42 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _bounded(values: Iterable[Any], limit: int) -> dict[str, Any]:
+def inventory_monthly_fact(*, parquet_root: Path, months: Sequence[str] | None = None, limit: int = 20) -> dict[str, Any]:
+    """Stream projected Parquet batches into a temporary bounded-distinct index."""
     if limit < 1:
         raise LocalAnalysisToolError("limit must be positive")
-    unique = sorted({str(value) for value in values if value is not None and str(value)})
-    return {"values": unique[:limit], "omitted_count": max(0, len(unique) - limit)}
-
-
-def inventory_monthly_fact(*, parquet_root: Path, months: Sequence[str] | None = None, limit: int = 20) -> dict[str, Any]:
-    """Return deterministic, bounded analysis choices from projected fact columns."""
-    columns = (
-        "month", "item_group_id", "item_name_id", "src_company_id", "dst_company_id",
-        "supplier_type", "receiver_type", "supplier_region", "receiver_region",
-    )
-    fact = read_monthly_fact_partitions(Path(parquet_root), months=months, columns=columns)
-    groups = _bounded(fact["item_group_id"].dropna(), limit)
-    names: list[dict[str, Any]] = []
-    scoped = fact.loc[:, ["item_group_id", "item_name_id"]].dropna(subset=["item_name_id"])
-    for (parent, name), _ in scoped.groupby(["item_group_id", "item_name_id"], dropna=False, sort=True):
-        names.append({"parent_item_group": None if parent is None else str(parent), "item_name": str(name)})
-    names = names[:limit]
-    entity_ids = _bounded([*fact["src_company_id"].dropna(), *fact["dst_company_id"].dropna()], limit)
-    return {
-        "command": "inventory", "fact_schema_version": FACT_SCHEMA_VERSION,
-        "required_columns": list(MONTHLY_FACT_COLUMNS),
-        "months": _bounded(fact["month"].dropna(), limit), "row_count": len(fact),
-        "item_groups": groups,
-        "item_names_parent_scoped": {"values": names, "omitted_count": max(0, len(scoped.drop_duplicates()) - len(names))},
-        "class1_selected_entity_ids": entity_ids,
-        "supplier_types": _bounded(fact["supplier_type"].dropna(), limit),
-        "receiver_types": _bounded(fact["receiver_type"].dropna(), limit),
-        "supplier_regions": _bounded(fact["supplier_region"].dropna(), limit),
-        "receiver_regions": _bounded(fact["receiver_region"].dropna(), limit),
-        "analysis_available": not fact.empty,
-    }
+    schema_root = Path(parquet_root) / DATASET_NAME / f"schema_version={FACT_SCHEMA_VERSION}"
+    available = sorted(path.name.removeprefix("month=") for path in schema_root.glob("month=*") if path.is_dir()) if schema_root.is_dir() else []
+    selected = sorted(months) if months is not None else available
+    if any(month not in available for month in selected):
+        raise LocalAnalysisToolError("requested month partition is unavailable")
+    paths = [schema_root / f"month={month}" / PARQUET_FILENAME for month in selected]
+    if any(not path.is_file() for path in paths):
+        raise LocalAnalysisToolError("monthly partition is incomplete")
+    with tempfile.TemporaryDirectory(prefix="nids-inventory-") as temporary:
+        connection = sqlite3.connect(Path(temporary) / "distinct.sqlite")
+        connection.execute("create table value_sets (kind text not null, value text not null, parent text, unique(kind,value,parent))")
+        invalid_names = 0; row_count = 0
+        columns = ["item_group_id", "item_name_id", "src_company_id", "dst_company_id", "supplier_type", "receiver_type", "supplier_region", "receiver_region"]
+        for path in paths:
+            file = pq.ParquetFile(path); row_count += file.metadata.num_rows
+            for batch in file.iter_batches(batch_size=65_536, columns=columns):
+                values = batch.to_pydict()
+                for index in range(batch.num_rows):
+                    group, name = values["item_group_id"][index], values["item_name_id"][index]
+                    if group is not None: connection.execute("insert or ignore into value_sets values ('item_group', ?, null)", (str(group),))
+                    if name is not None and group is not None: connection.execute("insert or ignore into value_sets values ('item_name', ?, ?)", (str(name), str(group)))
+                    elif name is not None: invalid_names += 1
+                    for kind, value in (("entity", values["src_company_id"][index]), ("entity", values["dst_company_id"][index]), ("supplier_type", values["supplier_type"][index]), ("receiver_type", values["receiver_type"][index]), ("supplier_region", values["supplier_region"][index]), ("receiver_region", values["receiver_region"][index])):
+                        if value is not None: connection.execute("insert or ignore into value_sets values (?, ?, null)", (kind, str(value)))
+        connection.commit()
+        def values(kind: str, *, scoped: bool = False) -> dict[str, Any]:
+            total = connection.execute("select count(*) from value_sets where kind=?", (kind,)).fetchone()[0]
+            rows = connection.execute("select value,parent from value_sets where kind=? order by value,parent limit ?", (kind, limit)).fetchall()
+            rendered = ([{"parent_item_group": parent, "item_name": value} for value, parent in rows] if scoped else [value for value, _ in rows])
+            return {"values": rendered, "omitted_count": total - len(rows)}
+        result = {"command": "inventory", "fact_schema_version": FACT_SCHEMA_VERSION, "required_columns": list(MONTHLY_FACT_COLUMNS), "months": {"values": selected[:limit], "omitted_count": len(selected) - min(len(selected), limit)}, "row_count": row_count, "item_groups": values("item_group"), "item_names_parent_scoped": values("item_name", scoped=True), "item_names_excluded_missing_parent_count": invalid_names, "class1_selected_entity_ids": values("entity"), "supplier_types": values("supplier_type"), "receiver_types": values("receiver_type"), "supplier_regions": values("supplier_region"), "receiver_regions": values("receiver_region"), "analysis_available": bool(row_count)}
+        connection.close(); return result
 
 
 def verify_class3_artifact(*, web_public_root: Path) -> dict[str, Any]:
@@ -115,17 +123,73 @@ def verify_class1_artifact(*, output_root: Path, anchor_month: str) -> dict[str,
     return {"command": "verify-class1", "status": "verified", "run_status": service["run_status"], "anchor_month": anchor_month, "selected_entity_id": graph["selected_entity_id"]}
 
 
+def verify_class1_web_artifact(*, web_public_root: Path, anchor_month: str, selected_entity_id: str) -> dict[str, Any]:
+    """Verify only the two service-safe files published for the Class 1 adapter."""
+    directory = Path(web_public_root) / "generated"
+    service, graph = _read_json(directory / SERVICE_FILENAME), _read_json(directory / ONE_HOP_GRAPH_FILENAME)
+    if service.get("run_status") not in {"completed", "insufficient_graph"} or graph.get("anchor_month") != anchor_month or graph.get("selected_entity_id") != selected_entity_id:
+        raise LocalAnalysisToolError("published Class 1 web artifact identity or status is invalid")
+    if "raw_score" in _canonical(service).decode("utf-8") or "raw_score" in _canonical(graph).decode("utf-8"):
+        raise LocalAnalysisToolError("published Class 1 web artifact exposes raw_score")
+    return {"command": "verify-class1-web", "status": "verified", "run_status": service["run_status"], "anchor_month": anchor_month, "selected_entity_id": selected_entity_id}
+
+
+def _overlaps(first: Path, second: Path) -> bool:
+    left, right = first.resolve(strict=False), second.resolve(strict=False)
+    try: left.relative_to(right); return True
+    except ValueError:
+        try: right.relative_to(left); return True
+        except ValueError: return False
+
+
+def publish_class1_web_artifact(*, output_root: Path, web_public_root: Path, anchor_month: str) -> dict[str, Any]:
+    """Atomically publish verified service/one-hop files without QA or source manifest."""
+    source = verify_class1_artifact(output_root=output_root, anchor_month=anchor_month)
+    destination = Path(web_public_root) / "generated"
+    if _overlaps(Path(output_root), destination):
+        raise LocalAnalysisToolError("Class 1 source output and web generated paths must be disjoint")
+    source_dir = Path(output_root) / f"anchor_month={anchor_month}"
+    source_files = {name: source_dir / name for name in (SERVICE_FILENAME, ONE_HOP_GRAPH_FILENAME)}
+    checksums = {name: sha256(path.read_bytes()).hexdigest() for name, path in source_files.items()}
+    if all((destination / name).is_file() and sha256((destination / name).read_bytes()).hexdigest() == digest for name, digest in checksums.items()):
+        verify_class1_web_artifact(web_public_root=web_public_root, anchor_month=anchor_month, selected_entity_id=source["selected_entity_id"])
+        return {**source, "command": "publish-class1-web", "status": "unchanged"}
+    destination.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="nids-class1-web-", dir=destination.parent) as temporary:
+        staged = Path(temporary)
+        for name, path in source_files.items(): shutil.copyfile(path, staged / name)
+        for name in source_files:
+            if sha256((staged / name).read_bytes()).hexdigest() != checksums[name]: raise LocalAnalysisToolError("staged Class 1 web artifact checksum mismatch")
+        backups: dict[str, Path] = {}
+        try:
+            for name in source_files:
+                target = destination / name
+                if target.exists():
+                    backup = staged / f"{name}.backup"; os.replace(target, backup); backups[name] = backup
+            for name in source_files: os.replace(staged / name, destination / name)
+        except OSError as exc:
+            for name, backup in backups.items():
+                if not (destination / name).exists(): os.replace(backup, destination / name)
+            raise LocalAnalysisToolError("could not atomically publish Class 1 web artifacts") from exc
+    verify_class1_web_artifact(web_public_root=web_public_root, anchor_month=anchor_month, selected_entity_id=source["selected_entity_id"])
+    return {**source, "command": "publish-class1-web", "status": "written"}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only inventory and verification for local analysis artifacts.")
     commands = parser.add_subparsers(dest="command", required=True)
     inventory = commands.add_parser("inventory"); inventory.add_argument("--parquet-root", required=True, type=Path); inventory.add_argument("--month", action="append"); inventory.add_argument("--limit", type=int, default=20)
     class3 = commands.add_parser("verify-class3"); class3.add_argument("--web-public-root", required=True, type=Path)
     class1 = commands.add_parser("verify-class1"); class1.add_argument("--output-root", required=True, type=Path); class1.add_argument("--anchor-month", required=True)
+    web = commands.add_parser("verify-class1-web"); web.add_argument("--web-public-root", required=True, type=Path); web.add_argument("--anchor-month", required=True); web.add_argument("--selected-entity-id", required=True)
+    publish = commands.add_parser("publish-class1-web"); publish.add_argument("--output-root", required=True, type=Path); publish.add_argument("--web-public-root", required=True, type=Path); publish.add_argument("--anchor-month", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "inventory": result = inventory_monthly_fact(parquet_root=args.parquet_root, months=args.month, limit=args.limit)
         elif args.command == "verify-class3": result = verify_class3_artifact(web_public_root=args.web_public_root)
-        else: result = verify_class1_artifact(output_root=args.output_root, anchor_month=args.anchor_month)
+        elif args.command == "verify-class1": result = verify_class1_artifact(output_root=args.output_root, anchor_month=args.anchor_month)
+        elif args.command == "verify-class1-web": result = verify_class1_web_artifact(web_public_root=args.web_public_root, anchor_month=args.anchor_month, selected_entity_id=args.selected_entity_id)
+        else: result = publish_class1_web_artifact(output_root=args.output_root, web_public_root=args.web_public_root, anchor_month=args.anchor_month)
         print(_canonical(result).decode("utf-8")); return 0
     except LocalAnalysisToolError as exc:
         print(_canonical({"error": type(exc).__name__, "message": str(exc)}).decode("utf-8")); return 2

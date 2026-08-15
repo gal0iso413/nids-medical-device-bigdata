@@ -32,8 +32,10 @@ python -m data_pipeline.cli run --config C:/secure/data-preparation.json
 python -m data_pipeline.offline.local_analysis_tools inventory --parquet-root D:/nids/monthly-fact --limit 20
 python -m data_pipeline.offline.class3_analysis_export --config C:/secure/class3-export.json
 python -m class_1_anomaly_detection.src.offline_anchor_runner --config C:/secure/class1-anchor.json
-python -m data_pipeline.offline.local_analysis_tools verify-class3 --web-public-root C:/workspace/web/class3_public/public
 python -m data_pipeline.offline.local_analysis_tools verify-class1 --output-root C:/workspace/class_1_anomaly_detection/output/offline-anchor --anchor-month 202403
+python -m data_pipeline.offline.local_analysis_tools publish-class1-web --output-root C:/workspace/class_1_anomaly_detection/output/offline-anchor --web-public-root C:/workspace/web/class1_internal/public --anchor-month 202403
+python -m data_pipeline.offline.local_analysis_tools verify-class1-web --web-public-root C:/workspace/web/class1_internal/public --anchor-month 202403 --selected-entity-id internal-entity-id
+python -m data_pipeline.offline.local_analysis_tools verify-class3 --web-public-root C:/workspace/web/class3_public/public
 ```
 
 Inventory projects only necessary Parquet columns and returns deterministic,
@@ -46,6 +48,14 @@ schema, parent scope, and local-only status. Class 1 checks service/graph/
 manifest identity and checksums, permits `completed`/`insufficient_graph`,
 rejects raw scores in service/graph JSON, and blocks restricted output below
 `web/public/generated`.
+
+Class 1 web publication is the only bridge to the local React path. It first
+verifies the external runner output, then atomically publishes only
+`internal-service.json` and `internal-one-hop-graph.json` under
+`web/class1_internal/public/generated/`, verifies those destination files, and
+only then starts React. Restricted QA JSON and the source run manifest are
+never copied. Source/destination nesting is blocked and identical publication
+is reported as `unchanged`.
 
 ## Local web adapters
 
