@@ -1,5 +1,7 @@
 from decimal import Decimal
 import json
+import sys
+import types
 import unittest
 from unittest.mock import patch
 
@@ -43,6 +45,86 @@ def row(month, src, dst, product="1", *, tx=1, amount=Decimal("1"), raw=Decimal(
 
 
 class ModelPipelineTests(unittest.TestCase):
+
+    def test_gadnr_backbone_only_consumes_tot_nodes(self):
+        class FakeGCN:
+            def __init__(self, *, in_channels, unexpected=None):
+                if unexpected is not None:
+                    raise TypeError("unexpected keyword argument 'unexpected'")
+                self.in_channels = in_channels
+
+        torch_geometric = types.ModuleType("torch_geometric")
+        nn = types.ModuleType("torch_geometric.nn")
+        models = types.ModuleType("torch_geometric.nn.models")
+        models.GCN = FakeGCN
+        torch_geometric.nn = nn
+        nn.models = models
+        with patch.dict(sys.modules, {
+            "torch_geometric": torch_geometric,
+            "torch_geometric.nn": nn,
+            "torch_geometric.nn.models": models,
+        }):
+            from class_1_anomaly_detection.src.model_pipeline import run_gadnr
+
+            # Extract the compatibility class through a minimal actual run
+            # would require all optional ML modules.  Instead, duplicate the
+            # public GAD-NR constructor call in a local fake detector.
+            class FakeTensor:
+                def reshape(self, *_):
+                    return self
+
+                def contiguous(self):
+                    return self
+
+            class FakeTorch:
+                float32 = object()
+                long = object()
+
+                class cuda:
+                    @staticmethod
+                    def is_available():
+                        return False
+
+                @staticmethod
+                def manual_seed(_):
+                    return None
+
+                @staticmethod
+                def tensor(*_, **__):
+                    return FakeTensor()
+
+            captured = {}
+
+            class FakeGADNR:
+                def __init__(self, *, backbone, **_):
+                    captured["backbone"] = backbone
+                    captured["model"] = self
+
+                def fit(self, _):
+                    backbone = captured["backbone"]
+                    self.encoder = backbone(in_channels=3, tot_nodes=2)
+                    self.decision_score_ = [0.25, 0.75]
+
+            data_module = types.ModuleType("torch_geometric.data")
+            data_module.Data = lambda **kwargs: kwargs
+            pygod = types.ModuleType("pygod")
+            detector = types.ModuleType("pygod.detector")
+            detector.GADNR = FakeGADNR
+            pygod.detector = detector
+            with patch.dict(sys.modules, {
+                "torch": FakeTorch,
+                "torch_geometric.data": data_module,
+                "pygod": pygod,
+                "pygod.detector": detector,
+            }):
+                graph = build_model_graph(fact([row("202401", "a", "b")]), anchor_month="202401")
+                features, _ = build_gadnr_features(fact([row("202401", "a", "b")]), graph,
+                                                   region_vocabulary=())
+                self.assertEqual(run_gadnr(features, graph), [0.25, 0.75])
+                self.assertEqual(captured["model"].encoder.in_channels, 3)
+                with self.assertRaisesRegex(TypeError, "unexpected"):
+                    captured["backbone"](in_channels=3, unexpected=True)
+
     def test_anchor_window_ends_at_anchor_across_year_boundary(self):
         graph = build_model_graph(fact([row("202311", "a", "b")]), anchor_month="202401")
         self.assertEqual(graph.window_months, ("202311", "202312", "202401"))
