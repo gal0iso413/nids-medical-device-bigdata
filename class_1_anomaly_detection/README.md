@@ -1,5 +1,10 @@
 # Class 1 Anomaly Detection
 
+The active local/internal execution path uses the offline anchor runner and the
+[turnkey local analysis runbook](../docs/data/local-analysis-turnkey-runbook.md).
+Older multi-model and Streamlit material remains legacy/QA context, not the
+default operational path.
+
 This module runs the Class 1 supply-chain anomaly workflow with an anchor-month
 rolling window.
 

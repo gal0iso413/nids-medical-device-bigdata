@@ -2,6 +2,17 @@
 
 Three isolated agents share read-only Excel inputs and the immutable Slack bridge in `shared_utils/slacker.py`.
 
+## Active local products
+
+- Class 1: internal GAD-NR monitoring for a selected entity and anchor month.
+- Class 3: company/product-group comparison analysis.
+
+The active path is Excel → verified monthly Parquet → local analysis JSON →
+React adapters. See the [turnkey local analysis runbook](docs/data/local-analysis-turnkey-runbook.md).
+Older Streamlit/MCDM paths are legacy evidence, not the default product route.
+The existing field runner prepares data only; PR-24 covers the separate
+field-kit and on-site profiling scope.
+
 ## Layout
 
 | Path | Role |
