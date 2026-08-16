@@ -660,17 +660,38 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
         *,
         batch_size: int,
         header_scan_limit: int,
+        max_rows_per_workbook: int | None,
+        create_source_lineage_snapshot: bool,
     ) -> None:
         if batch_size < 1:
             raise ValueError("batch_size must be positive")
+        if max_rows_per_workbook is not None and max_rows_per_workbook < 1:
+            raise ValueError("max_rows_per_workbook must be positive when set")
         self._paths = tuple(workbook_paths)
+        if not self._paths:
+            raise SourceSnapshotError("At least one source workbook is required")
+        if any(not isinstance(path, Path) for path in self._paths):
+            raise TypeError("workbook_paths must contain pathlib.Path values")
+        names = [path.name for path in self._paths]
+        if len(set(names)) != len(names):
+            raise SourceSnapshotError("Source workbook logical names must be unique")
         self.batch_size = batch_size
         self.header_scan_limit = header_scan_limit
-        self.lineage = create_source_lineage(self._paths)
-        path_by_name = {path.name: path for path in self._paths}
-        self._ordered_paths = tuple(
-            path_by_name[item.logical_name] for item in self.lineage.workbooks
-        )
+        self.max_rows_per_workbook = max_rows_per_workbook
+        self.lineage: SourceLineage | None
+        if create_source_lineage_snapshot:
+            self.lineage = create_source_lineage(self._paths)
+            path_by_name = {path.name: path for path in self._paths}
+            self._ordered_paths = tuple(
+                path_by_name[item.logical_name] for item in self.lineage.workbooks
+            )
+            self._source_version = self.lineage.source_version
+        else:
+            self.lineage = None
+            self._ordered_paths = tuple(
+                sorted(self._paths, key=lambda path: (path.name.casefold(), path.name))
+            )
+            self._source_version = "nids-supply-benchmark-unhashed-v1"
         self.report = SupplyIngestionReport()
         self._started = False
         self._closed = False
@@ -719,6 +740,7 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
                     sheets = _discover_open_workbook(
                         workbook, header_scan_limit=self.header_scan_limit
                     )
+                    workbook_rows_read = 0
                     for discovered in sheets:
                         positions = _field_positions(discovered.headers)
                         _validate_mapped_sheet_schema(
@@ -760,11 +782,17 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
                         ):
                             if not any(value is not None for value in row):
                                 continue
+                            if (
+                                self.max_rows_per_workbook is not None
+                                and workbook_rows_read >= self.max_rows_per_workbook
+                            ):
+                                break
+                            workbook_rows_read += 1
                             profile.rows_read += 1
                             raw = _raw_fields(row, positions)
                             mapped = _map_row(
                                 raw,
-                                source_version=self.lineage.source_version,
+                                source_version=self._source_version,
                                 location=_location(
                                     path.name, discovered.name, row_number
                                 ),
@@ -779,6 +807,11 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
                                     batch, columns=SOURCE_BATCH_COLUMNS
                                 )
                                 batch = []
+                        if (
+                            self.max_rows_per_workbook is not None
+                            and workbook_rows_read >= self.max_rows_per_workbook
+                        ):
+                            break
                 except (DataSheetDiscoveryError, NidsSupplyExcelError):
                     raise
                 except Exception as exc:
@@ -803,10 +836,19 @@ def stream_nids_supply_excel(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
     header_scan_limit: int = DEFAULT_HEADER_SCAN_LIMIT,
+    max_rows_per_workbook: int | None = None,
+    create_source_lineage_snapshot: bool = True,
 ) -> SupplyExcelStream:
-    """Create a one-pass bounded stream of normalized PR-01 source batches."""
+    """Create a one-pass bounded stream of normalized PR-01 source batches.
+
+    ``create_source_lineage_snapshot=False`` is reserved for explicitly
+    non-publishing benchmark reads. It avoids full workbook checksums and
+    exposes no immutable lineage suitable for pipeline execution.
+    """
     return SupplyExcelStream(
         workbook_paths,
         batch_size=batch_size,
         header_scan_limit=header_scan_limit,
+        max_rows_per_workbook=max_rows_per_workbook,
+        create_source_lineage_snapshot=create_source_lineage_snapshot,
     )
