@@ -1,0 +1,10 @@
+{
+  "supply_workbooks": [
+    "./inputs/supply/example-supply.xlsx"
+  ],
+  "sample_max_workbooks": 1,
+  "sample_max_rows_per_workbook": 50000,
+  "batch_size": 5000,
+  "expected_total_supply_rows": 207000000,
+  "report_label": "representative-sample"
+}
