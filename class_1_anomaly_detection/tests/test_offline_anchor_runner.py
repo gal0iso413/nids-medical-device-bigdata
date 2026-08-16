@@ -16,6 +16,7 @@ from class_1_anomaly_detection.src.offline_anchor_runner import (
     Class1OfflineAnchorConfig,
     Class1OfflineAnchorRunConflictError,
     Class1OfflineAnchorRunError,
+    _json_value,
     run_class1_offline_anchor,
 )
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
@@ -47,6 +48,9 @@ def _fact(months, *, self_loops=False):
 
 class OfflineAnchorRunnerTests(unittest.TestCase):
     months = ("202401", "202402", "202403", "202404", "202405", "202406")
+
+    def test_cli_result_paths_are_json_serializable(self):
+        self.assertEqual(_json_value(Path("anchor") / "result.json"), "anchor/result.json")
 
     def _roots(self, *, self_loops=False, months=None, fact=None):
         temporary = tempfile.TemporaryDirectory(dir=Path.cwd())

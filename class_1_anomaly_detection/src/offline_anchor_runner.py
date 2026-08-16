@@ -82,6 +82,8 @@ def _fingerprint(value: Any) -> str:
 def _json_value(value: Any) -> Any:
     if value is None or value is pd.NA:
         return None
+    if isinstance(value, Path):
+        return value.as_posix()
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if hasattr(value, "as_tuple"):  # Decimal, without importing private pipeline helpers.
