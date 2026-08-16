@@ -1,65 +1,34 @@
 ---
-description: Workspace-wide multi-agent orchestration, data layer, documentation, and Slack control protocol
+description: Current local analysis product boundaries and repository hygiene
 alwaysApply: true
 ---
 
-# Multi-Agent Orchestration Blueprint
+# Current product boundaries
 
-## Directory isolation
+## Authority
 
-| Path | Access |
-|------|--------|
-| `shared_data/` | Read-only — transactional datasets |
-| `shared_docs/` | Read-only — domain docs (`official/`, `structured/`) |
-| `shared_utils/` | Immutable; import `AgentSlacker` only |
-| `prototype_meeting/` | PM-owned writable root — synthetic meeting prototypes and facilitation materials only |
-| `class_1_anomaly_detection/` | Agent 1 writable root (+ `PROGRESS.md`) |
-| `class_2_supply_forecast/` | Agent 2 writable root (+ `PROGRESS.md`) |
-| `class_3_impact_evaluation/` | Agent 3 writable root (+ `PROGRESS.md`) |
+Use these documents in order:
 
-Agents must not modify files outside their designated folder. `shared_docs/` is PM-maintained; agents read only. The PM may maintain `prototype_meeting/` from Cursor Composer; background model agents must treat it as read-only.
+1. `README.md`
+2. `docs/data/local-analysis-turnkey-runbook.md`
+3. `docs/decisions/`
+4. `docs/specs/`
 
-## Documentation architecture (`shared_docs/`)
+`shared_docs/structured/` is historical problem/data context only.
 
-| Tier | Purpose |
-|------|---------|
-| `official/` | Program RFP and field dictionaries (stakeholder source) |
-| `structured/` | Per-agent specifications (supreme for that agent on conflict) |
+## Active runtime
 
-Data paths and ingestion: `shared_data/DATA_LAYER.md` only.
+- Class 1 uses the GAD-NR offline anchor runner as its only model route.
+- Class 3 uses company/product-group comparison analysis only.
+- The final Class 1 and Class 3 interfaces are React under `web/`.
 
-Agents follow **Hierarchy of Truth** and context anchoring defined in each `class_*/.cursor/rules/agent-governance.mdc`.
+Do not introduce Streamlit, MCDM, legacy model comparison, or
+`prototype_meeting` as an execution path.
 
-## Data layer (`shared_data/`)
+## Data and release hygiene
 
-- **Active tier (top7):** `top7_master_registration_data.xlsx`, `top7_transaction_supply_data.xlsx` (supply: data sheet only — content-based discovery, not hardcoded name)
-- **Archived tier (sample):** `sample_master_registration_data.xlsx`, `sample_transaction_supply_data.xlsx` — **do not load**; retained for Hermes audit history only
-- **Ingestion rules:** `shared_data/DATA_LAYER.md` + `shared_docs/official/description_*.md`
-- **Dynamic volatility:** Runtime discovery, profiling, scale, and drift tolerance — no hardcoded schemas in code.
-
-## Communication (`shared_utils/slacker.py`)
-
-- **Agent channel:** `SLACK_WEBHOOK_URL` in each agent `.env`
-- **Global board:** `SLACK_GENERAL_WEBHOOK_URL` in root `.env` → `#general-pm-board`
-- Slack is **outbound-only**; PM commands in **Cursor Composer** only.
-- **Hermes deliverables:** background roles post via `scripts/notify_hermes_deliverable.py` → `notify_hermes_deliverable()`; reports live under `class_*/research/` or `class_*/notes/` (see `.hermes/README.md`).
-
-## Hermes (background roles only)
-
-| Role | Output | Cursor handoff |
-|------|--------|----------------|
-| Methods researcher | `class_*/research/*.md` | PM reviews memo → implements in Composer |
-| Data profiler | `class_*/notes/eda_profile_*.md` | PM reviews → EDA scripts in Composer |
-| Spec auditor | `class_*/notes/spec_audit_*.md` | PM resolves gaps in Composer |
-
-Governance stays in `.cursor/rules/`; do not duplicate in `.hermes/skills/`.
-
-## Active phase (workspace default)
-
-**Phase 1 — Autonomous EDA** is locked until the PM explicitly approves advancement per agent.
-
-## Language
-
-English only across code, comments, logs, UI, Slack, and documentation updates inside agent folders.
-
-Korean is permitted for end-user UI copy and facilitator materials under `prototype_meeting/`; code, comments, logs, and developer instructions remain English.
+- Do not bypass the existing monthly 3-key lookup, checkpoint, or Parquet contracts.
+- Do not commit Excel, Parquet, SQLite, generated JSON, model results, ZIP,
+  wheels, executables, or site-specific configuration.
+- A sample Excel request does not authorize a UI change.
+- Field-data validation and its results are not production or public approval.

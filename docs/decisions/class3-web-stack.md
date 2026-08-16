@@ -15,7 +15,7 @@
 - **Locked decision** — Class 3는 내부 분석 화면이 아니라 외부 공개가 가능한 업체·품목군 비교분석 서비스다.
 - **Locked decision** — 목표 구조는 프런트엔드와 공개 API의 경계가 분리된 대시보드형 SPA다.
 - **Locked decision** — 초기 정적 웹 셸에는 SSR, SEO, 서버 컴포넌트, 다중 route 요구가 없다.
-- **Locked decision** — `prototype_meeting/innovation/class3.html`, `class3.css`, `class3.js`는 혁신 시안의 시각 참고 자료이며 신규 웹 런타임이 아니다.
+- **Locked decision** — Historical innovation prototypes were visual reference only and are not a current web runtime; their code is available only through Git history.
 
 ## 확정 기술 선택
 
@@ -99,5 +99,4 @@ GitHub Actions workflow 신규 구축은 이 목록에 포함하지 않는다. U
 - [구현 로드맵](../migration/implementation-roadmap.md)
 - [Class 3 재구축 결정](class3-rebuild-decision.md)
 - [Class 3 업체·품목군 비교분석 명세](../specs/class3-company-product-comparison.md)
-- [혁신 시안 설명](../../prototype_meeting/innovation/README.md)
-- [Class 3 혁신 시안 HTML](../../prototype_meeting/innovation/class3.html)
+- Historical prototype code is recoverable from Git history, not from the current runtime tree.

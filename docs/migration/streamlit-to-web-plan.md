@@ -1,3 +1,9 @@
+# Historical migration record
+
+> Historical migration record. Do not use this document as a current execution
+> command. Follow `docs/data/local-analysis-turnkey-runbook.md` and
+> `tools/offline/analysis-kit/README.md` for active workflows.
+
 # Streamlit에서 일반 웹으로 전환 계획
 
 > 상태: 마이그레이션 기준선
@@ -310,3 +316,8 @@ M2~M3은 실데이터보다 앞선 mock 전용 UI 열이다. M4 이후에는 Cla
 3. 내부 SSO와 기업 인증·소유권 검증.
 4. 공개 보호 정책.
 5. 생산 갱신 주기, 동시접속, SLO, 보존기간.
+# Historical migration record
+
+> Historical migration record. Do not use this document as a current execution
+> command. Follow `docs/data/local-analysis-turnkey-runbook.md` and
+> `tools/offline/analysis-kit/README.md` for active workflows.
