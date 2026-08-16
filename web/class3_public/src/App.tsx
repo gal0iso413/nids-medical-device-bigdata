@@ -12,6 +12,7 @@ import {
   resolveCurrentClass3PageState,
   type Class3PageState,
 } from "./dataSource/runtimeDataSource";
+import ApiModeApp from "./ApiModeApp";
 
 const statusLabels: Record<ReleaseStatus, string> = {
   released: "공개 가능 상태 예시",
@@ -71,6 +72,7 @@ function decimalDisplay(value: string | null): string {
 }
 
 function statusMessage(state: Class3PageState): string {
+  if (state.kind === "api") return "Local internal-only API connected; public release policy is not approved.";
   if (state.kind === "local_analysis") {
     return "로컬 분석 데이터 · 공개 정책 미적용";
   }
@@ -90,6 +92,7 @@ function statusTone(state: Class3PageState): string {
   if (state.kind === "local_analysis") {
     return "attention";
   }
+  if (state.kind === "api") return "attention";
   if (state.kind !== "fixture") {
     return "neutral";
   }
@@ -243,6 +246,10 @@ export default function App({ initialState }: AppProps) {
 
   function removeSelection(selection: LocalSelectionItem) {
     setSelectedIds((currentIds) => currentIds.filter((id) => id !== selection.id));
+  }
+
+  if (state.kind === "api") {
+    return <ApiModeApp adapter={state.adapter} status={state.status} />;
   }
 
   return (

@@ -8,9 +8,19 @@ const mockLoader = vi.fn(async () => { throw new Error("mock should not load"); 
 
 describe("Class 3 runtime data-source boundary", () => {
   it("selects local only when explicitly requested and retains unavailable by default", () => {
+    expect(selectDataSource({ mode: "production", requestedSource: "api" })).toBe("api");
     expect(selectDataSource({ mode: "production", requestedSource: "local" })).toBe("local_analysis");
     expect(selectDataSource({ mode: "development", requestedSource: "mock" })).toBe("development_mock");
     expect(selectDataSource({ mode: "production" })).toBe("unavailable");
+  });
+
+  it("does not fall back to mock or local JSON when API status fails", async () => {
+    const loadLocal = vi.fn(async () => syntheticClass3AnalysisPayload);
+    const loadApi = vi.fn(async () => { throw new Error("offline"); });
+    const state = await resolveClass3PageState({ mode: "development", requestedSource: "api" }, mockLoader, loadLocal, loadApi);
+    expect(state.kind).toBe("error");
+    expect(mockLoader).not.toHaveBeenCalled();
+    expect(loadLocal).not.toHaveBeenCalled();
   });
 
   it("loads the validated local payload at the configured URL", async () => {
