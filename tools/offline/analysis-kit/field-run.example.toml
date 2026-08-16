@@ -1,0 +1,23 @@
+config_version = "1.0.0"
+
+[paths]
+supply_workbooks = ["D:/NIDS Input/supply.xlsx"]
+checkpoint_root = "D:/NIDS Run/checkpoints"
+output_root = "D:/NIDS Run/monthly-facts"
+
+[master]
+lookup_root = "D:/NIDS Run/master-lookup"
+source_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[run]
+batch_size = 10000
+max_month_fact_bytes = 536870912
+minimum_free_bytes = 0
+
+[class3_export]
+# Existing UTF-8 JSON config for data_pipeline.offline.class3_analysis_export.
+config = "D:/NIDS Run/class3-export.json"
+
+[class1]
+# Existing UTF-8 JSON config for class_1_anomaly_detection.src.offline_anchor_runner.
+config = "D:/NIDS Run/class1-anchor.json"

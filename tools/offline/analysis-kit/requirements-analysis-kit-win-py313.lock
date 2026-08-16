@@ -1,0 +1,46 @@
+# CPython 3.13.12 / Windows x64 / CPU-only integrated analysis environment.
+# Self-contained: 43 exact hash-pinned wheel requirements; no nested locks or indexes.
+# Baseline is the PR-24 verified GAD-NR wheel set plus pipeline-only wheels.
+aiohappyeyeballs==2.7.1 --hash=sha256:9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472  # aiohappyeyeballs-2.7.1-py3-none-any.whl
+aiohttp==3.14.3 --hash=sha256:dff9461ec275f22135650d5ba4b4931a11f3958df7dfbb8db630000d4dee0883  # aiohttp-3.14.3-cp313-cp313-win_amd64.whl
+aiosignal==1.4.0 --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e  # aiosignal-1.4.0-py3-none-any.whl
+attrs==26.1.0 --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309  # attrs-26.1.0-py3-none-any.whl
+certifi==2026.7.22 --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775  # certifi-2026.7.22-py3-none-any.whl
+charset-normalizer==3.5.0 --hash=sha256:72982d9958a42f8132bf2d6b90214ed66477295ef1188731f98ae3511c6eeb5a  # charset_normalizer-3.5.0-cp313-cp313-win_amd64.whl
+colorama==0.4.6 --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6  # colorama-0.4.6-py2.py3-none-any.whl
+filelock==3.32.3 --hash=sha256:7f0ca4bcc0e181c60dbbd8aa9ab5b120ebb99e4e064e83636340056f833a1f09  # filelock-3.32.3-py3-none-any.whl
+frozenlist==1.8.0 --hash=sha256:878be833caa6a3821caf85eb39c5ba92d28e85df26d57afb06b35b2efd937231  # frozenlist-1.8.0-cp313-cp313-win_amd64.whl
+fsspec==2026.7.0 --hash=sha256:b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279  # fsspec-2026.7.0-py3-none-any.whl
+idna==3.18 --hash=sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2  # idna-3.18-py3-none-any.whl
+Jinja2==3.1.6 --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67  # jinja2-3.1.6-py3-none-any.whl
+joblib==1.5.3 --hash=sha256:5fc3c5039fc5ca8c0276333a188bbd59d6b7ab37fe6632daa76bc7f9ec18e713  # joblib-1.5.3-py3-none-any.whl
+MarkupSafe==3.0.3 --hash=sha256:9a1abfdc021a164803f4d485104931fb8f8c1efd55bc6b748d2f5774e78b62c5  # markupsafe-3.0.3-cp313-cp313-win_amd64.whl
+mpmath==1.3.0 --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c  # mpmath-1.3.0-py3-none-any.whl
+multidict==6.7.1 --hash=sha256:960c83bf01a95b12b08fd54324a4eb1d5b52c88932b5cba5d6e712bb3ed12eb5  # multidict-6.7.1-cp313-cp313-win_amd64.whl
+networkx==3.6.1 --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762  # networkx-3.6.1-py3-none-any.whl
+numpy==2.4.3 --hash=sha256:0a60e17a14d640f49146cb38e3f105f571318db7826d9b6fef7e4dce758faecd  # numpy-2.4.3-cp313-cp313-win_amd64.whl
+pandas==3.0.2 --hash=sha256:07a10f5c36512eead51bc578eb3354ad17578b22c013d89a796ab5eee90cd991  # pandas-3.0.2-cp313-cp313-win_amd64.whl
+propcache==0.5.2 --hash=sha256:dfed59d0a5aeb01e242e66ff0300bc4a265a7c05f612d30016f0b60b1017d757  # propcache-0.5.2-cp313-cp313-win_amd64.whl
+psutil==7.2.2 --hash=sha256:eb7e81434c8d223ec4a219b5fc1c47d0417b12be7ea866e24fb5ad6e84b3d988  # psutil-7.2.2-cp37-abi3-win_amd64.whl
+pyg_lib==0.8.0+pt211cpu --hash=sha256:1921a0c615dc223da0f241a6a3b95899f80d68b2c79b447adbfac9a35c5f71dd  # pyg_lib-0.8.0+pt211cpu-cp310-abi3-win_amd64.whl (PyG)
+pygod==1.1.0 --hash=sha256:58404d0dfc2bcc32951b226247587432b94fc63779a46d53799fd46625f858a2  # pygod-1.1.0-py3-none-any.whl
+pyparsing==3.3.2 --hash=sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d  # pyparsing-3.3.2-py3-none-any.whl
+python-dateutil==2.9.0.post0 --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427  # python_dateutil-2.9.0.post0-py2.py3-none-any.whl
+requests==2.34.2 --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0  # requests-2.34.2-py3-none-any.whl
+scikit-learn==1.8.0 --hash=sha256:2de443b9373b3b615aec1bb57f9baa6bb3a9bd093f1269ba95c17d870422b271  # scikit_learn-1.8.0-cp313-cp313-win_amd64.whl
+scipy==1.18.0 --hash=sha256:1afac4a847207c7ff8efd321734a50b06d0280b3b2a2c0fc2f413101747ad7c7  # scipy-1.18.0-cp313-cp313-win_amd64.whl
+setuptools==78.1.0 --hash=sha256:3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8  # setuptools-78.1.0-py3-none-any.whl
+six==1.17.0 --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274  # six-1.17.0-py2.py3-none-any.whl
+sympy==1.14.0 --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5  # sympy-1.14.0-py3-none-any.whl
+threadpoolctl==3.6.0 --hash=sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb  # threadpoolctl-3.6.0-py3-none-any.whl
+torch==2.11.0+cpu --hash=sha256:ed70d4a4fc9f8b826c02fa1a9800a83820fb2fa6ae607680b53390f9ef394d85  # torch-2.11.0+cpu-cp313-cp313-win_amd64.whl (PyTorch CPU)
+torch-geometric==2.7.0 --hash=sha256:6e0cd3ad824d484651ef5d308fc66c687bfcf5ba040d56d1e0fe0f81f365e292  # torch_geometric-2.7.0-py3-none-any.whl
+tqdm==4.70.0 --hash=sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953  # tqdm-4.70.0-py3-none-any.whl
+typing_extensions==4.16.0 --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8  # typing_extensions-4.16.0-py3-none-any.whl
+tzdata==2026.3 --hash=sha256:dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931  # tzdata-2026.3-py2.py3-none-any.whl
+urllib3==2.7.0 --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897  # urllib3-2.7.0-py3-none-any.whl
+xxhash==4.0.0 --hash=sha256:c5f7268147219bad4ffa56a06a0416d30b9a4c16dd1f2fc847bcee0a82babdb7  # xxhash-4.0.0-cp313-cp313-win_amd64.whl
+yarl==1.24.5 --hash=sha256:2dbe06fc16bc91502bca713704022182e5729861ae00277c3a23354b40929740  # yarl-1.24.5-cp313-cp313-win_amd64.whl
+pyarrow==24.0.0 --hash=sha256:e4505fc6583f7b05ab854934896bcac8253b04ac1171a77dfb73efef92076d91
+openpyxl==3.1.5 --hash=sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2
+et-xmlfile==2.0.0 --hash=sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa
