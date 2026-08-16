@@ -16,7 +16,7 @@
 ## 현재 기준선
 
 - **Confirmed fact** — 생산 방문 기준 공급 데이터는 4개월 약 1,200만 행, 마스터는 약 262.6만 행이며, 보유 공급 기간은 2020-08부터 2026-04까지다. 생산 3-key 조인율은 99.97%다. 근거: [`shared_docs/structured/onsite_visit1_summary.md`](../../shared_docs/structured/onsite_visit1_summary.md).
-- **Confirmed fact** — 로컬 top7은 공급 704,315행, 70개월, 7개 품목 중심의 표본이다. 생산 대표성을 주장할 수 없다. 근거: [`prototype_meeting/research/platform_benchmark.md`](../../prototype_meeting/research/platform_benchmark.md).
+- **Confirmed fact** — Historical local top7 benchmark material describes a 704,315-row, 70-month, seven-product sample and does not support a production-representativeness claim. The removed source is recoverable from Git history.
 - **Confirmed fact** — 현재 Class 1/3 Streamlit 앱은 웹 요청 시 Excel을 읽지 않고 사전 계산 CSV를 읽는다. Excel은 `src/ingest/loader.py`를 호출하는 배치·EDA 경로에서 읽는다.
 - **Confirmed fact** — 저장소에는 Parquet 적재, 서비스 API, 인증·권한 계층, PostgreSQL/ClickHouse/Redis 연동, 공개 억제 서비스가 없다.
 - **Implementation risk** — `shared_data/DATA_LAYER.md`의 “큰 파일은 chunked reads” 요구와 달리 현재 Excel 로더는 `pandas.read_excel`로 전체 시트를 메모리에 적재한다.

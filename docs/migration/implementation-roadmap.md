@@ -1,3 +1,9 @@
+# Historical migration record
+
+> Historical migration record. Do not use this document as a current execution
+> command. Follow `docs/data/local-analysis-turnkey-runbook.md` and
+> `tools/offline/analysis-kit/README.md` for active workflows.
+
 # 구현 로드맵
 
 > 상태: 작은 PR 실행 순서
@@ -331,3 +337,8 @@ tests/fixtures/supply_monthly_small.*
 9. 역할군·최소 표본·백분위 band.
 10. BC gateway share 분모와 판단 유보 기준.
 11. 모델 승인·재학습 주기와 수작업 검토 책임자.
+# Historical migration record
+
+> Historical migration record. Do not use this document as a current execution
+> command. Follow `docs/data/local-analysis-turnkey-runbook.md` and
+> `tools/offline/analysis-kit/README.md` for active workflows.

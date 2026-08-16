@@ -11,10 +11,10 @@
 ## 코드 대조 결과
 
 - **Confirmed fact** — [`class_1_anomaly_detection/README.md`](../../class_1_anomaly_detection/README.md)는 DOMINANT와 GAD-NR 실행을 함께 권장한다.
-- **Confirmed fact** — [`run_pygod_compare.py`](../../class_1_anomaly_detection/src/experiments/run_pygod_compare.py)는 기본값으로 DOMINANT, AnomalyDAE, GAD-NR, OCGNN, IsoForest 다섯 모델을 실행한다.
-- **Confirmed fact** — [`run_step4_evaluation.py`](../../class_1_anomaly_detection/src/experiments/run_step4_evaluation.py)는 BC와 약한 기준의 일치도를 합성해 앵커마다 `recommended_model`을 동적으로 선택한다.
+- **Confirmed fact** — Historical `run_pygod_compare.py` used DOMINANT, AnomalyDAE, GAD-NR, OCGNN, and IsoForest by default; that entrypoint was removed and is recoverable from Git history.
+- **Confirmed fact** — Historical `run_step4_evaluation.py` combined BC and weak-label agreement into a dynamic `recommended_model`; that entrypoint was removed and is recoverable from Git history.
 - **Confirmed fact** — 기본 `contamination=0.1`이며, 점수 상위 10%를 라벨 1로 만드는 상대 라벨을 생성한다. 실제 이상 비율이 10%라는 근거는 저장소에 없다.
-- **Confirmed fact** — [`export_pyg_graph.py`](../../class_1_anomaly_detection/src/experiments/export_pyg_graph.py)의 `data.x`에는 BC, 가격 flag/z-score, 시간 단차가 포함된다.
+- **Confirmed fact** — Historical `export_pyg_graph.py` placed BC, price flag/z-score, and time lag in `data.x`; that entrypoint was removed and is recoverable from Git history.
 - **Confirmed fact** — `edge_attr`에는 정제 금액, 거래 건수, UDI 수, 규제 플래그 등이 저장되지만 현재 학습 호출은 PyGOD 모델에 `Data`를 전달할 뿐 edge-aware 사용자 모델이나 `edge_weight` 전달 계약은 없다. 현재 사용 중인 PyGOD GAD-NR 경로는 `x`와 `edge_index`를 forward에 전달하므로 `edge_attr`의 값은 GAD-NR 메시지 패싱에 직접 반영되지 않는다. 공식 소스: <https://docs.pygod.org/en/latest/_modules/pygod/detector/gadnr.html>.
 - **Confirmed fact** — 저장소는 GAD-NR를 `num_layers=1`로 만들고 `batch_size`를 지정하지 않는다. PyGOD 1.1.0 기본값은 `batch_size=0`(full batch)이므로 선택 앵커의 전체 그래프를 학습 대상으로 사용하되 한 층의 직접 메시지 범위는 주로 1-hop이다. UI의 1-hop/2-hop 선택과 모델 학습 범위는 별개다.
 - **Confirmed fact** — 현재 GNN `edge_index`는 `업체쌍×제품 3-key` 복수간선이다. BC만 별도 `collapse_to_digraph`에서 업체쌍으로 접는다.
