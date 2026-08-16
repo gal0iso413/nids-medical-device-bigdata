@@ -31,6 +31,12 @@ offline-field-kits/
 **/class3_serving_mart/.schema_version=*.tmp-*
 .class3-serving-mart-*/
 
+# Fail-closed Class 3 release-policy artifacts (rebuild from verified marts)
+**/class3_release_policy/**/release-status.json
+**/class3_release_policy/**/_manifest.json
+**/class3_release_policy/.schema_version=*.tmp-*
+.class3-release-policy-*/
+
 # Immutable master product lookup outputs (source/tests/docs remain tracked)
 **/master_product_lookup/**/*.sqlite
 **/master_product_lookup/**/_manifest.json
