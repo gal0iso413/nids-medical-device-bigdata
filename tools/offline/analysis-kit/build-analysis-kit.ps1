@@ -60,7 +60,7 @@ function Read-AnalysisLockEntries {
             sha256 = $match.Groups[3].Value
         }
     }
-    if ($entries.Count -ne 43) { throw "Analysis dependency lock must contain exactly 43 requirements." }
+    if ($entries.Count -lt 43) { throw "Analysis dependency lock must retain the 43-wheel baseline." }
     if (@($entries | Group-Object normalized_package | Where-Object Count -ne 1).Count -ne 0) {
         throw "Analysis dependency lock contains duplicate packages."
     }
@@ -75,8 +75,8 @@ function Copy-VerifiedWheelhouse {
     Assert-BuilderTree -Root $Wheelhouse -Label "WheelhouseDirectory"
     $children = @(Get-ChildItem -LiteralPath $Wheelhouse -Force)
     $wheels = @($children | Where-Object { -not $_.PSIsContainer })
-    if ($children.Count -ne 43 -or $wheels.Count -ne 43 -or @($wheels | Where-Object Extension -ne '.whl').Count -ne 0) {
-        throw "The input wheelhouse must be flat and contain exactly 43 wheel files."
+    if ($children.Count -ne $LockEntries.Count -or $wheels.Count -ne $LockEntries.Count -or @($wheels | Where-Object Extension -ne '.whl').Count -ne 0) {
+        throw "The input wheelhouse must be flat and exactly match the locked wheel count."
     }
     $byHash = @{}
     foreach ($entry in $LockEntries) { $byHash[$entry.sha256] = $entry }
@@ -95,7 +95,7 @@ function Copy-VerifiedWheelhouse {
         $seen[$entry.normalized_package] = $true
         Copy-Item -LiteralPath $wheel.FullName -Destination (Join-Path $Destination $wheel.Name)
     }
-    if ($seen.Count -ne 43) { throw "Every locked package must have exactly one input wheel." }
+    if ($seen.Count -ne $LockEntries.Count) { throw "Every locked package must have exactly one input wheel." }
 }
 
 function Copy-VerifiedStaticSite {
@@ -115,6 +115,9 @@ function Copy-VerifiedStaticSite {
         if (@($parts | Where-Object { $_.ToLowerInvariant() -eq 'generated' }).Count -ne 0 -or
             $blockedNames -contains $leaf -or $leaf -match '(^|[-_.])raw[-_.]?scores?($|[-_.])') {
             throw "$Label contains a generated, raw-score, QA, or source-manifest artifact: $relative"
+        }
+        if ($Label -eq 'Class3DistDirectory' -and $leaf.EndsWith('.json')) {
+            throw "$Label contains a raw JSON artifact: $relative"
         }
         Assert-AnalysisRelativePath $relative
         $target = Join-Path $Destination $relative.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
@@ -229,7 +232,7 @@ try {
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class1DistDirectory) -Destination (Join-Path $staging 'sites\class1') -Label 'Class1DistDirectory'
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class3DistDirectory) -Destination (Join-Path $staging 'sites\class3') -Label 'Class3DistDirectory'
 
-    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
+    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class3-serving-marts.ps1', 'serve-class3-site.ps1', 'rehearse-class3-site.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
         $source = Join-Path $PSScriptRoot $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required kit support file is missing: $name" }
         Copy-Item -LiteralPath $source -Destination (Join-Path $staging $name)

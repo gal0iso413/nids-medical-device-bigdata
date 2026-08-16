@@ -70,6 +70,14 @@ class Class3LocalIntegratedHostTests(unittest.TestCase):
         (self.static / "assets" / "unsafe.js").write_text("const endpoint = 'co:private';", encoding="utf-8")
         with self.assertRaises(StaticRootError): create_integrated_app(self.marts, self.static)
         (self.static / "assets" / "unsafe.js").unlink()
+        (self.static / "assets" / "react-url.js").write_text(
+            "const u='https://react.dev/errors/'; const svg='http://www.w3.org/2000/svg';", encoding="utf-8"
+        )
+        create_integrated_app(self.marts, self.static)
+        (self.static / "assets" / "winpath.js").write_text("const p='C:\\\\Users\\\\nids';", encoding="utf-8")
+        with self.assertRaises(StaticRootError): create_integrated_app(self.marts, self.static)
+        (self.static / "assets" / "react-url.js").unlink()
+        (self.static / "assets" / "winpath.js").unlink()
         api = create_app(self.marts)
         with TestClient(api) as client:
             self.assertEqual(client.get("/healthz").status_code, 200)
