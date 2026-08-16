@@ -84,6 +84,9 @@ is development-server configuration and is not included in the production
 bundle. Production API use requires a separately approved same-origin reverse
 proxy and deployment configuration; no fixed localhost URL is embedded.
 
+For the localhost integrated production host (React build plus `/api` on one
+origin), see [`docs/service/class3-local-integrated-host.md`](../../docs/service/class3-local-integrated-host.md).
+
 Terminal 1:
 
 ```powershell
