@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib, json, shutil, subprocess
 from pathlib import Path, PurePosixPath
 
-ALLOWED_UNTRACKED = ("tools/offline/analysis-kit/", "docs/data/offline-analysis-python-environment.md", "tests/offline/test_analysis_kit_lock.py", "tests/offline/test_analysis_kit_builder.py", "tests/offline/test_source_snapshot.py")
-TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "requirements-data-pipeline.txt", "README.md")
+ALLOWED_UNTRACKED = ("tools/offline/analysis-kit/", "docs/data/offline-analysis-python-environment.md", "docs/service/class3-local-integrated-host.md", "tests/offline/", "tests/services/")
+TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "services/class3_local_api/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "docs/service/", "requirements-data-pipeline.txt", "README.md")
 FORBIDDEN_SUFFIXES = {".xlsx", ".xls", ".xlsm", ".parquet", ".sqlite", ".whl", ".zip", ".exe"}
 FORBIDDEN_PARTS = {".git", "node_modules", "dist", "generated", "checkpoint", "checkpoints", "output"}
 
