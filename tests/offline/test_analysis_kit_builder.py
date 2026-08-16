@@ -184,8 +184,8 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
 
         cases = (
             ("identity", identity, "package/version does not match"),
-            ("missing", missing, "exactly 43 wheel files"),
-            ("extra", extra, "exactly 43 wheel files"),
+            ("missing", missing, "exactly match the locked wheel count"),
+            ("extra", extra, "exactly match the locked wheel count"),
             ("sha", sha_mismatch, "not present in the locked hash set"),
         )
         for name, wheelhouse, expected_error in cases:

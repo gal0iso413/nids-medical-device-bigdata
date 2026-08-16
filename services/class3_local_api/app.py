@@ -20,7 +20,7 @@ class StaticRootError(RuntimeError):
 _FORBIDDEN_STATIC_SUFFIXES = frozenset({".parquet", ".xlsx", ".xls", ".sqlite", ".db", ".zip", ".exe", ".whl", ".json"})
 _FORBIDDEN_STATIC_NAMES = frozenset({"_manifest.json", "checkpoint.sqlite"})
 _RAW_ENDPOINT = re.compile(rb"(?i)(?:co|hosp):[A-Za-z0-9][A-Za-z0-9_.-]*")
-_WINDOWS_ABSOLUTE_PATH = re.compile(rb"[A-Za-z]:[\\\\/]")
+_WINDOWS_ABSOLUTE_PATH = re.compile(rb"(?i)(?<![a-z0-9+.-])[a-z]:[\\/]")
 
 
 def _inside(path: Path, root: Path) -> bool:
