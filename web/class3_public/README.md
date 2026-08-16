@@ -71,6 +71,36 @@ Cursor를 이용한 세부 시각 조정은 PR-C3-UI-01D의 후속 범위다. �
 
 ## Local analysis adapter
 
+## Local API mode
+
+`VITE_CLASS3_DATA_SOURCE=api` selects the local Class 3 query API with the
+same-origin `/api` base path. API mode verifies `/v1/status` first and does not
+fall back to mock fixtures or local JSON when the API is unavailable or rejects
+a request. The UI displays `local_internal_only` and
+`public_release_policy=not_approved`; it is not a public service or release.
+
+For local development only, Vite proxies `/api` to `127.0.0.1:8013`. The proxy
+is development-server configuration and is not included in the production
+bundle. Production API use requires a separately approved same-origin reverse
+proxy and deployment configuration; no fixed localhost URL is embedded.
+
+Terminal 1:
+
+```powershell
+python -m services.class3_local_api `
+  --mart-root "D:\NIDS Local Run\class3-serving-marts" `
+  --host 127.0.0.1 `
+  --port 8013
+```
+
+Terminal 2:
+
+```powershell
+cd web/class3_public
+$env:VITE_CLASS3_DATA_SOURCE = "api"
+npm run dev
+```
+
 For the full offline execution and read-only artifact verification sequence,
 see [`docs/data/local-analysis-turnkey-runbook.md`](../../docs/data/local-analysis-turnkey-runbook.md).
 
