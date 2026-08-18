@@ -23,6 +23,7 @@ import pandas as pd
 import numpy as np
 
 from data_pipeline.aggregates.company_counterparty_product_month import (
+    FORWARD_TRANSACTION_TYPE,
     validate_forward_supply_rows,
 )
 from data_pipeline.contracts.supply_monthly import (
@@ -692,7 +693,12 @@ def _normalized_batch(
     versions = normalized["source_version"].dropna().unique().tolist()
     if versions != [supply_source_version]:
         raise CheckpointLineageError("Classified batch supply lineage does not match run")
-    validate_forward_supply_rows(normalized)
+    forward_mask = normalized["transaction_type"].eq(FORWARD_TRANSACTION_TYPE)
+    for source_id in normalized.loc[~forward_mask, "source_row_id"].astype(str):
+        classifications[source_id] = 0
+    forward = normalized.loc[forward_mask]
+    if not forward.empty:
+        validate_forward_supply_rows(forward)
     normalized["month"] = normalized["supply_date"].dt.strftime("%Y%m")
     return normalized, classifications
 

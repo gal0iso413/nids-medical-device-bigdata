@@ -116,7 +116,7 @@ function Copy-VerifiedStaticSite {
             $blockedNames -contains $leaf -or $leaf -match '(^|[-_.])raw[-_.]?scores?($|[-_.])') {
             throw "$Label contains a generated, raw-score, QA, or source-manifest artifact: $relative"
         }
-        if ($Label -eq 'Class3DistDirectory' -and $leaf.EndsWith('.json')) {
+        if ($leaf.EndsWith('.json')) {
             throw "$Label contains a raw JSON artifact: $relative"
         }
         Assert-AnalysisRelativePath $relative
@@ -232,7 +232,7 @@ try {
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class1DistDirectory) -Destination (Join-Path $staging 'sites\class1') -Label 'Class1DistDirectory'
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class3DistDirectory) -Destination (Join-Path $staging 'sites\class3') -Label 'Class3DistDirectory'
 
-    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class3-serving-marts.ps1', 'serve-class3-site.ps1', 'rehearse-class3-site.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
+    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class3-serving-marts.ps1', 'serve-class3-site.ps1', 'rehearse-class3-site.ps1', 'build-class1-lookup-index.ps1', 'serve-class1-site.ps1', 'rehearse-class1-site.ps1', 'run-class1-graph-scale-gate.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
         $source = Join-Path $PSScriptRoot $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required kit support file is missing: $name" }
         Copy-Item -LiteralPath $source -Destination (Join-Path $staging $name)

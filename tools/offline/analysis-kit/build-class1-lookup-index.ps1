@@ -1,0 +1,4 @@
+#Requires -Version 5.1
+param([Parameter(Mandatory=$true)][string]$FactRoot,[Parameter(Mandatory=$true)][string]$RunRoot,[Parameter(Mandatory=$true)][string]$OutputRoot,[Parameter(Mandatory=$true)][string]$AnchorMonth,[string]$NameRoot="",[string]$InstallDirectory="")
+$ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+if(!$InstallDirectory){$InstallDirectory=Join-Path (Split-Path -Parent $PSScriptRoot) 'nids-analysis-runtime'};$py=Join-Path ([IO.Path]::GetFullPath($InstallDirectory)) '.venv\Scripts\python.exe';$source=Join-Path ([IO.Path]::GetFullPath($InstallDirectory)) 'source';if(!(Test-Path $py)){throw 'runtime is missing'};Push-Location $source;try{$cli=@('--fact-root',$FactRoot,'--run-root',$RunRoot,'--output-root',$OutputRoot,'--anchor-month',$AnchorMonth);if($NameRoot){$cli+=@('--name-root',$NameRoot)};&$py -s -m data_pipeline.analysis.class1_lookup_index @cli;if($LASTEXITCODE -ne 0){throw 'Class 1 lookup-index build failed'}}finally{Pop-Location}

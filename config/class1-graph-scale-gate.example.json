@@ -1,0 +1,11 @@
+{
+  "parquet_root": "D:/nids/monthly-fact",
+  "anchor_month": "202403",
+  "region_vocabulary": ["11", "26"],
+  "seed": 17,
+  "report_label": "laptop-graph-scale",
+  "max_nodes": 50000,
+  "max_edges": 100000,
+  "max_peak_rss_bytes": 8589934592,
+  "max_gadnr_seconds": 1800
+}

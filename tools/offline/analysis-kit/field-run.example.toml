@@ -21,3 +21,6 @@ config = "D:/NIDS Run/class3-export.json"
 [class1]
 # Existing UTF-8 JSON config for class_1_anomaly_detection.src.offline_anchor_runner.
 config = "D:/NIDS Run/class1-anchor.json"
+
+# Lookup index, serving marts, and localhost hosts are separate kit scripts.
+# Do not publish generated JSON into sites/class1 or sites/class3.

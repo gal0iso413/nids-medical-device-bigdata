@@ -30,6 +30,8 @@ as a simple linear sample extrapolation. It does **not** establish a complete
 
 Before a full run, review observed throughput, disk growth rate, adapter
 rejection ratio, monthly fact cardinality, and Class 1 nationwide graph node
-and edge counts. This PR does not decide Class 1 GAD-NR feasibility; decide it
-in a graph-scale gate after monthly Parquet exists. API and DuckDB work belong
-to a later Class 3 serving-mart/API PR.
+and edge counts. This preflight does not decide Class 1 GAD-NR feasibility;
+measure that with the [graph-scale gate](class1-graph-scale-gate.md) after
+monthly Parquet exists. Failure of that gate does not authorize slicing the
+training graph by region or item group. API and DuckDB work belong to a later
+Class 3 serving-mart/API PR.

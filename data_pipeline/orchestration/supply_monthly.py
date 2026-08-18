@@ -35,6 +35,10 @@ from data_pipeline.ingest import (
     create_source_lineage,
     stream_nids_supply_excel,
 )
+from data_pipeline.ingest.company_display_name import (
+    CompanyDisplayNameError,
+    write_company_display_name_directory,
+)
 from data_pipeline.storage import (
     MasterLookupVerification,
     open_master_product_lookup,
@@ -285,6 +289,7 @@ def _seal_active_checkpoint(
     master_source_hash: str,
     batch_size: int,
     max_month_fact_bytes: int,
+    output_root: Path,
 ) -> SealedCheckpointResult:
     with checkpoint:
         with stream_nids_supply_excel(
@@ -322,10 +327,22 @@ def _seal_active_checkpoint(
                     normalized_batch, matched_mask=matched_mask
                 )
             stream.report.validate_accounting()
-            return checkpoint.seal(
+            name_rows = stream.display_name_rows()
+            sealed = checkpoint.seal(
                 adapter_report=stream.report,
                 max_fact_bytes=max_month_fact_bytes,
             )
+    try:
+        write_company_display_name_directory(
+            output_root=output_root,
+            rows=name_rows,
+            lineage=supply_lineage,
+        )
+    except CompanyDisplayNameError as exc:
+        raise OrchestrationIntegrityError(
+            "Could not publish company display-name directory from the ingest pass"
+        ) from exc
+    return sealed
 
 
 def _publish_or_verify_months(
@@ -456,6 +473,7 @@ def run_supply_monthly_orchestration(
             master_source_hash=master_source_hash,
             batch_size=batch_size,
             max_month_fact_bytes=max_month_fact_bytes,
+            output_root=output_root,
         )
 
     entries, skipped, written, unchanged = _publish_or_verify_months(

@@ -72,7 +72,7 @@ function decimalDisplay(value: string | null): string {
 }
 
 function statusMessage(state: Class3PageState): string {
-  if (state.kind === "api") return "Local internal-only API connected; public release policy is not approved.";
+  if (state.kind === "api") return "로컬 내부 API 연결됨 · 공개 정책 미적용";
   if (state.kind === "local_analysis") {
     return "로컬 분석 데이터 · 공개 정책 미적용";
   }
@@ -258,30 +258,12 @@ export default function App({ initialState }: AppProps) {
         본문 바로가기
       </a>
 
-      <header className="service-bar">
-        <div className="service-bar__inner">
-          <div className="service-brand" aria-label="NIDS Class 3 공개 비교 서비스">
-            <span className="nids-mark" aria-hidden="true">NIDS</span>
-            <span className="service-brand__text">
-              <span className="service-kicker">의료기기 통합정보</span>
-              <span className="service-name">Class 3 공개 비교</span>
-            </span>
-          </div>
-          <span className={`environment-badge${fixture ? " is-synthetic" : ""}`}>
-            {localAnalysis
-              ? "로컬 분석 데이터 · 공개 정책 미적용"
-              : fixture ? "합성 개발 데이터" : "서비스 데이터 미연결"}
-          </span>
-        </div>
-      </header>
-
       <main id="main-content" className="app-shell" tabIndex={-1}>
         <header className="hero">
-          <p className="eyebrow">공개 비교 분석</p>
-          <h1>업체·품목군 비교분석</h1>
+          <p className="eyebrow">품목 비교 분석</p>
+          <h1>품목 비교분석</h1>
           <p className="hero-lead">
-            보고된 거래 활동을 품목별 결과와 선택 포트폴리오로 나누어 보는
-            공개 서비스의 화면 계약입니다.
+            고른 품목군·품목명의 보고 거래 활동을 품목별로 나란히 보는 화면입니다.
           </p>
           <p className="data-boundary" role="note">
             {localAnalysis
@@ -456,8 +438,8 @@ export default function App({ initialState }: AppProps) {
 
         <section className="results-section" aria-labelledby="comparison-heading">
           <div className="section-heading section-heading--rule">
-            <p className="section-kicker">품목별 보기</p>
-            <h2 id="comparison-heading">품목별 비교 결과</h2>
+            <p className="section-kicker">품목 비교</p>
+            <h2 id="comparison-heading">선택한 품목 비교</h2>
           </div>
           {localAnalysis && localMetrics.length ? (
             <div className="card-grid">

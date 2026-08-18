@@ -9,7 +9,7 @@ import pandas as pd
 
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
 from class_1_anomaly_detection.src.model_pipeline import (
-    ModelGraph, build_anchor_diffs, build_bc_evidence, build_class1_pipeline,
+    ModelGraph, _role, build_anchor_diffs, build_bc_evidence, build_class1_pipeline,
     build_gadnr_features, build_model_graph, model_edge_index, role_percentiles,
     run_gadnr, serialize_class1_pipeline, serialize_service_results,
 )
@@ -161,6 +161,16 @@ class ModelPipelineTests(unittest.TestCase):
         scores = run_gadnr(pd.DataFrame(index=pd.Index(["isolated"], name="entity_id")), empty,
                            scorer=lambda x, edge: [0.0])
         self.assertEqual(scores, [0.0])
+
+    def test_supply_type_aliases_map_to_atomic_roles(self):
+        self.assertEqual(_role(["판매(임대)업"]), "distributor")
+        self.assertEqual(_role(["제조업"]), "manufacturer")
+        self.assertEqual(_role(["수입업"]), "importer")
+        self.assertEqual(_role(["의료기관"]), "hospital")
+        self.assertEqual(_role(["기타"]), "other")
+        self.assertEqual(_role(["distributor"]), "distributor")
+        self.assertEqual(_role(["제조업", "판매(임대)업"]), "multi_role")
+        self.assertEqual(_role(["unknown-type"]), "multi_role")
 
     def test_feature_roles_regions_valid_rates_and_exclusions(self):
         f = fact([

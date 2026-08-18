@@ -20,9 +20,11 @@ from typing import Any, Final, Literal
 
 import pandas as pd
 
-from data_pipeline.contracts.supply_monthly import FACT_SCHEMA_VERSION
+from data_pipeline.contracts.supply_monthly import FACT_SCHEMA_VERSION, MONTHLY_FACT_COLUMNS
 from data_pipeline.storage.monthly_fact_parquet import (
+    COUNT_COLUMNS,
     DATASET_NAME as FACT_DATASET_NAME,
+    DECIMAL_COLUMNS,
     LOGICAL_SCHEMA_FINGERPRINT,
     PartitionVerification,
     read_monthly_fact_partitions,
@@ -30,15 +32,17 @@ from data_pipeline.storage.monthly_fact_parquet import (
 )
 
 
-SERVING_MART_SCHEMA_VERSION: Final = "1.0.0"
+SERVING_MART_SCHEMA_VERSION: Final = "1.1.0"
 SERVING_MART_DATASET_NAME: Final = "class3_serving_mart"
 MANIFEST_FILENAME: Final = "_manifest.json"
 _MONTH_PATTERN: Final = re.compile(r"^\d{6}$")
+_ENTITY_HASH_SQL: Final = "hex(sha256(encode({column})))"
 _MART_FILENAMES: Final[dict[str, str]] = {
     "product_catalog": "product_catalog.parquet",
     "product_month": "product_month.parquet",
     "item_group_month": "item_group_month.parquet",
     "endpoint_composition": "endpoint_composition.parquet",
+    "endpoint_membership": "endpoint_membership.parquet",
     "coverage": "coverage.parquet",
 }
 
@@ -180,49 +184,85 @@ def _build_queries() -> dict[str, str]:
     endpoint_composition = """
         SELECT month, 'product' AS product_scope, product_id AS product_scope_id,
                'supplier' AS endpoint, 'type' AS dimension, supplier_type AS dimension_value,
-               COUNT(DISTINCT src_company_id) AS entity_count_distinct
+               COUNT(DISTINCT src_company_id) AS entity_count_distinct,
+               SUM(tx_count) AS tx_count
           FROM fact WHERE supplier_type IS NOT NULL AND trim(supplier_type) <> ''
           GROUP BY month, product_id, supplier_type
         UNION ALL
         SELECT month, 'product', product_id, 'supplier', 'region', supplier_region,
-               COUNT(DISTINCT src_company_id)
+               COUNT(DISTINCT src_company_id), SUM(tx_count)
           FROM fact WHERE supplier_region IS NOT NULL AND trim(supplier_region) <> ''
           GROUP BY month, product_id, supplier_region
         UNION ALL
         SELECT month, 'product', product_id, 'receiver', 'type', receiver_type,
-               COUNT(DISTINCT dst_company_id)
+               COUNT(DISTINCT dst_company_id), SUM(tx_count)
           FROM fact WHERE receiver_type IS NOT NULL AND trim(receiver_type) <> ''
           GROUP BY month, product_id, receiver_type
         UNION ALL
         SELECT month, 'product', product_id, 'receiver', 'region', receiver_region,
-               COUNT(DISTINCT dst_company_id)
+               COUNT(DISTINCT dst_company_id), SUM(tx_count)
           FROM fact WHERE receiver_region IS NOT NULL AND trim(receiver_region) <> ''
           GROUP BY month, product_id, receiver_region
         UNION ALL
         SELECT month, 'item_group', item_group_id, 'supplier', 'type', supplier_type,
-               COUNT(DISTINCT src_company_id)
+               COUNT(DISTINCT src_company_id), SUM(tx_count)
           FROM fact WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
                     AND supplier_type IS NOT NULL AND trim(supplier_type) <> ''
           GROUP BY month, item_group_id, supplier_type
         UNION ALL
         SELECT month, 'item_group', item_group_id, 'supplier', 'region', supplier_region,
-               COUNT(DISTINCT src_company_id)
+               COUNT(DISTINCT src_company_id), SUM(tx_count)
           FROM fact WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
                     AND supplier_region IS NOT NULL AND trim(supplier_region) <> ''
           GROUP BY month, item_group_id, supplier_region
         UNION ALL
         SELECT month, 'item_group', item_group_id, 'receiver', 'type', receiver_type,
-               COUNT(DISTINCT dst_company_id)
+               COUNT(DISTINCT dst_company_id), SUM(tx_count)
           FROM fact WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
                     AND receiver_type IS NOT NULL AND trim(receiver_type) <> ''
           GROUP BY month, item_group_id, receiver_type
         UNION ALL
         SELECT month, 'item_group', item_group_id, 'receiver', 'region', receiver_region,
-               COUNT(DISTINCT dst_company_id)
+               COUNT(DISTINCT dst_company_id), SUM(tx_count)
           FROM fact WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
                     AND receiver_region IS NOT NULL AND trim(receiver_region) <> ''
           GROUP BY month, item_group_id, receiver_region
         ORDER BY month, product_scope, product_scope_id, endpoint, dimension, dimension_value
+    """
+    supplier_hash = _ENTITY_HASH_SQL.format(column="src_company_id")
+    receiver_hash = _ENTITY_HASH_SQL.format(column="dst_company_id")
+    endpoint_membership = f"""
+        SELECT month, 'item_group' AS product_scope, item_group_id AS product_scope_id,
+               CAST(NULL AS VARCHAR) AS parent_item_group_id, 'supplier' AS endpoint,
+               {supplier_hash} AS entity_hash, SUM(tx_count) AS tx_count
+          FROM fact
+          WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
+            AND src_company_id IS NOT NULL AND trim(src_company_id) <> ''
+          GROUP BY month, item_group_id, src_company_id
+        UNION ALL
+        SELECT month, 'item_group', item_group_id, CAST(NULL AS VARCHAR), 'receiver',
+               {receiver_hash}, SUM(tx_count)
+          FROM fact
+          WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
+            AND dst_company_id IS NOT NULL AND trim(dst_company_id) <> ''
+          GROUP BY month, item_group_id, dst_company_id
+        UNION ALL
+        SELECT month, 'item_name', item_name_id, item_group_id, 'supplier',
+               {supplier_hash}, SUM(tx_count)
+          FROM fact
+          WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
+            AND item_name_id IS NOT NULL AND trim(item_name_id) <> ''
+            AND src_company_id IS NOT NULL AND trim(src_company_id) <> ''
+          GROUP BY month, item_group_id, item_name_id, src_company_id
+        UNION ALL
+        SELECT month, 'item_name', item_name_id, item_group_id, 'receiver',
+               {receiver_hash}, SUM(tx_count)
+          FROM fact
+          WHERE item_group_id IS NOT NULL AND trim(item_group_id) <> ''
+            AND item_name_id IS NOT NULL AND trim(item_name_id) <> ''
+            AND dst_company_id IS NOT NULL AND trim(dst_company_id) <> ''
+          GROUP BY month, item_group_id, item_name_id, dst_company_id
+        ORDER BY month, product_scope, parent_item_group_id, product_scope_id, endpoint, entity_hash
     """
     coverage_columns = ",\n          ".join(
         f"SUM(CASE WHEN {column} IS NOT NULL AND trim({column}) <> '' THEN tx_count ELSE 0 END) AS {name}_valid_tx_count"
@@ -270,6 +310,7 @@ def _build_queries() -> dict[str, str]:
         "product_month": product_month,
         "item_group_month": item_group_month,
         "endpoint_composition": endpoint_composition,
+        "endpoint_membership": endpoint_membership,
         "coverage": coverage,
     }
 
@@ -286,22 +327,40 @@ def _source_lineage(verifications: tuple[PartitionVerification, ...]) -> list[di
     ]
 
 
+def _fact_table_sql() -> str:
+    columns: list[str] = []
+    for name in MONTHLY_FACT_COLUMNS:
+        if name in DECIMAL_COLUMNS:
+            columns.append(f"{name} DECIMAL(38,6)")
+        elif name in COUNT_COLUMNS:
+            columns.append(f"{name} BIGINT")
+        else:
+            columns.append(f"{name} VARCHAR")
+    return "CREATE TABLE fact (" + ", ".join(columns) + ")"
+
+
 def _write_candidate(
     staging: Path, fact_root: Path, months: tuple[str, ...]
 ) -> tuple[dict[str, int], dict[str, str]]:
     connection = _duckdb_connection()
     try:
-        connection.execute("CREATE TABLE fact AS SELECT * FROM (SELECT NULL::VARCHAR AS month) WHERE FALSE")
-        for index, month in enumerate(months):
+        connection.execute(_fact_table_sql())
+        for month in months:
             frame = read_monthly_fact_partitions(fact_root, months=(month,))
             if frame.empty:
                 raise Class3ServingMartError(f"verified partition {month} has no aggregate observations")
-            connection.register("monthly_frame", frame)
-            if index == 0:
-                connection.execute("DROP TABLE fact")
-                connection.execute("CREATE TABLE fact AS SELECT * FROM monthly_frame")
-            else:
-                connection.execute("INSERT INTO fact SELECT * FROM monthly_frame")
+            loaded = frame.copy()
+            for column in DECIMAL_COLUMNS:
+                loaded[column] = loaded[column].map(
+                    lambda value: None if value is None or pd.isna(value) else format(value, "f")
+                )
+            connection.register("monthly_frame", loaded)
+            columns = ", ".join(MONTHLY_FACT_COLUMNS)
+            selects = ", ".join(
+                f"CAST({name} AS DECIMAL(38,6))" if name in DECIMAL_COLUMNS else name
+                for name in MONTHLY_FACT_COLUMNS
+            )
+            connection.execute(f"INSERT INTO fact ({columns}) SELECT {selects} FROM monthly_frame")
             connection.unregister("monthly_frame")
         row_counts: dict[str, int] = {}
         hashes: dict[str, str] = {}

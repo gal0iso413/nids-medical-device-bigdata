@@ -286,23 +286,36 @@ class SupplyMonthlyCheckpointTests(unittest.TestCase):
         self.assertIn("item_name_id_conflict", january["quality_flags"])
         self.assertIn("high_value_review", january["quality_flags"])
 
-    def test_return_recall_unknown_and_negative_block_entire_batch(self) -> None:
-        cases = [
-            (source_row(1, transaction_type="RETURN"), "transaction_sign_policy_pending"),
-            (source_row(1, transaction_type="RECALL"), "transaction_sign_policy_pending"),
-            (source_row(1, transaction_type="DISCARD"), "transaction_type_unknown"),
-            (source_row(1, transaction_type="LEASE"), "transaction_type_unknown"),
-            (source_row(1, amount="-1"), "negative_forward_value"),
-        ]
-        for position, (row, status) in enumerate(cases):
-            root = self.temp_dir / f"c{position}"
+    def test_return_and_recall_are_separated_from_facts_without_aborting_supply(self) -> None:
+        for transaction_type in ("RETURN", "RECALL", "DISCARD", "LEASE", "기타"):
+            root = self.temp_dir / f"pending-{transaction_type}"
             with self.open(root) as checkpoint:
-                with self.assertRaisesRegex(ContractValidationError, status):
-                    checkpoint.apply_classified_batch(frame([row]), matched_mask=[True])
+                mixed = frame([source_row(1), source_row(2, transaction_type=transaction_type)])
+                result = checkpoint.apply_classified_batch(mixed, matched_mask=[True, True])
+                self.assertEqual(result.rows_new, 2)
+                self.assertEqual(result.matched_new, 1)
+                self.assertEqual(result.unmatched_new, 1)
                 self.assertEqual(
                     checkpoint._connection.execute("SELECT COUNT(*) FROM source_row_ledger").fetchone()[0],
-                    0,
+                    2,
                 )
+                self.assertEqual(
+                    checkpoint._connection.execute(
+                        "SELECT COALESCE(SUM(tx_count),0) FROM grain_accumulator"
+                    ).fetchone()[0],
+                    1,
+                )
+
+    def test_negative_forward_supply_still_blocks_entire_batch(self) -> None:
+        with self.open(self.temp_dir / "negative") as checkpoint:
+            with self.assertRaisesRegex(ContractValidationError, "negative_forward_value"):
+                checkpoint.apply_classified_batch(
+                    frame([source_row(1, amount="-1")]), matched_mask=[True]
+                )
+            self.assertEqual(
+                checkpoint._connection.execute("SELECT COUNT(*) FROM source_row_ledger").fetchone()[0],
+                0,
+            )
 
     def test_empty_and_all_unmatched_cannot_seal(self) -> None:
         with self.open() as checkpoint:

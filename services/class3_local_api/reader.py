@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
@@ -9,6 +10,8 @@ import json
 from pathlib import Path
 import re
 from typing import Any, Final, Iterable
+
+from services.class3_local_api.schemas import ComparisonSelection
 
 import duckdb
 
@@ -21,13 +24,15 @@ from data_pipeline.analysis.class3_serving_mart import (
 
 _MONTH_PATTERN: Final = re.compile(r"^\d{6}$")
 _OUTPUTS: Final[frozenset[str]] = frozenset({
-    "product_catalog", "product_month", "item_group_month", "endpoint_composition", "coverage",
+    "product_catalog", "product_month", "item_group_month", "endpoint_composition",
+    "endpoint_membership", "coverage",
 })
 _MART_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
     "product_catalog": ("product_id", "item_group_id", "item_name_id", "source_months"),
     "product_month": ("month", "product_id", "tx_count", "amount_sum_clean", "raw_supply_qty_sum", "piece_qty_sum", "amount_valid_row_count", "raw_supply_qty_valid_row_count", "piece_qty_valid_row_count", "supplier_count_distinct", "receiver_count_distinct", "unique_udi_count_sum", "active_day_count_sum"),
     "item_group_month": ("month", "item_group_id", "tx_count", "amount_sum_clean", "raw_supply_qty_sum", "piece_qty_sum", "amount_valid_row_count", "raw_supply_qty_valid_row_count", "piece_qty_valid_row_count", "supplier_count_distinct", "receiver_count_distinct", "unique_udi_count_sum", "active_day_count_sum"),
-    "endpoint_composition": ("month", "product_scope", "product_scope_id", "endpoint", "dimension", "dimension_value", "entity_count_distinct"),
+    "endpoint_composition": ("month", "product_scope", "product_scope_id", "endpoint", "dimension", "dimension_value", "entity_count_distinct", "tx_count"),
+    "endpoint_membership": ("month", "product_scope", "product_scope_id", "parent_item_group_id", "endpoint", "entity_hash", "tx_count"),
     "coverage": ("month", "aggregate_observation_count", "tx_count", "amount_sum_clean", "raw_supply_qty_sum", "piece_qty_sum", "amount_valid_row_count", "raw_supply_qty_valid_row_count", "piece_qty_valid_row_count", "supplier_type_valid_tx_count", "receiver_type_valid_tx_count", "supplier_region_valid_tx_count", "receiver_region_valid_tx_count", "quality_flags", "supplier_type_coverage_ratio", "receiver_type_coverage_ratio", "supplier_region_coverage_ratio", "receiver_region_coverage_ratio"),
 }
 
@@ -274,10 +279,128 @@ class MartReader:
             f"SELECT {self._columns('coverage')} FROM {self._relation('coverage')} WHERE month BETWEEN ? AND ? ORDER BY month",
             (period_start, period_end),
         )
+        membership = self._membership_rows(period_start, period_end, selections)
         return {
             "period_start": period_start, "period_end": period_end,
-            "selections": [selection.model_dump() for selection in selections],
+            "selections": [selection.model_dump(exclude_none=True) for selection in selections],
             "product_catalog": catalog, "product_month": product_rows,
             "item_group_month": group_rows, "endpoint_composition": endpoint_rows,
             "coverage": coverage,
+            "selection_concentration": _selection_concentration(selections, membership),
+            "portfolio_overlap": _portfolio_overlap(selections, membership),
         }
+
+    def _membership_rows(
+        self, period_start: str, period_end: str, selections: list[ComparisonSelection]
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: list[Any] = [period_start, period_end]
+        for selection in selections:
+            if selection.selection_type == "item_group":
+                clauses.append("(product_scope = 'item_group' AND product_scope_id = ?)")
+                values.append(selection.item_group_id)
+            else:
+                clauses.append(
+                    "(product_scope = 'item_name' AND parent_item_group_id = ? AND product_scope_id = ?)"
+                )
+                values.extend([selection.item_group_id, selection.item_name_id])
+        return self._rows(
+            f"SELECT {self._columns('endpoint_membership')} FROM {self._relation('endpoint_membership')} "
+            f"WHERE month BETWEEN ? AND ? AND ({' OR '.join(clauses)}) "
+            "ORDER BY month, product_scope, parent_item_group_id, product_scope_id, endpoint, entity_hash",
+            values,
+        )
+
+
+def _selection_ref(selection: ComparisonSelection) -> dict[str, str]:
+    if selection.selection_type == "item_name":
+        return {
+            "selection_type": "item_name",
+            "item_group_id": selection.item_group_id,
+            "item_name_id": selection.item_name_id or "",
+        }
+    return {"selection_type": "item_group", "item_group_id": selection.item_group_id}
+
+
+def _membership_matches(row: dict[str, Any], selection: ComparisonSelection) -> bool:
+    if selection.selection_type == "item_group":
+        return row.get("product_scope") == "item_group" and row.get("product_scope_id") == selection.item_group_id
+    return (
+        row.get("product_scope") == "item_name"
+        and row.get("parent_item_group_id") == selection.item_group_id
+        and row.get("product_scope_id") == selection.item_name_id
+    )
+
+
+def _hhi_string(counts: list[int]) -> str | None:
+    total = sum(counts)
+    if total <= 0:
+        return None
+    value = sum((Decimal(count) / Decimal(total)) ** 2 for count in counts)
+    return format(value.quantize(Decimal("0.000001")), "f")
+
+
+def _selection_concentration(
+    selections: list[ComparisonSelection], membership: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for selection in selections:
+        by_month: dict[str, dict[str, int]] = defaultdict(dict)
+        for row in membership:
+            if row.get("endpoint") != "supplier" or not _membership_matches(row, selection):
+                continue
+            month = str(row.get("month") or "")
+            entity = str(row.get("entity_hash") or "")
+            if not month or not entity:
+                continue
+            by_month[month][entity] = by_month[month].get(entity, 0) + int(row.get("tx_count") or 0)
+        for month in sorted(by_month):
+            counts = list(by_month[month].values())
+            rows.append({
+                **_selection_ref(selection),
+                "month": month,
+                "supplier_hhi_tx": _hhi_string(counts),
+                "market_tx_count": sum(counts),
+                "supplier_count": len(counts),
+            })
+    return rows
+
+
+def _portfolio_overlap(
+    selections: list[ComparisonSelection], membership: list[dict[str, Any]]
+) -> dict[str, Any]:
+    supplier_sets: list[set[str]] = []
+    receiver_sets: list[set[str]] = []
+    for selection in selections:
+        suppliers: set[str] = set()
+        receivers: set[str] = set()
+        for row in membership:
+            if not _membership_matches(row, selection):
+                continue
+            entity = str(row.get("entity_hash") or "")
+            if not entity:
+                continue
+            if row.get("endpoint") == "supplier":
+                suppliers.add(entity)
+            elif row.get("endpoint") == "receiver":
+                receivers.add(entity)
+        supplier_sets.append(suppliers)
+        receiver_sets.append(receivers)
+    pairs: list[dict[str, Any]] = []
+    for left_index, left in enumerate(selections):
+        for right_index, right in enumerate(selections):
+            if right_index <= left_index:
+                continue
+            pairs.append({
+                "left": _selection_ref(left),
+                "right": _selection_ref(right),
+                "supplier_intersection_count": len(supplier_sets[left_index] & supplier_sets[right_index]),
+                "receiver_intersection_count": len(receiver_sets[left_index] & receiver_sets[right_index]),
+            })
+    suppliers_union = set().union(*supplier_sets) if supplier_sets else set()
+    receivers_union = set().union(*receiver_sets) if receiver_sets else set()
+    return {
+        "supplier_union_count": len(suppliers_union),
+        "receiver_union_count": len(receivers_union),
+        "pairs": pairs,
+    }

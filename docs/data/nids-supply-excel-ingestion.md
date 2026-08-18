@@ -84,6 +84,8 @@ data sheet 발견 직후 실제 행 순회 전에는 필수 논리 구조를 별
 
 회사명·사업자등록번호는 ID fallback으로 사용하지 않는다. 수령 업체일련번호와 요양기관기호가 모두 없으면 행을 차단한다. 불완전 3-key도 정상 batch에서 제외한다.
 
+선택 열 `공급자`와 `공급받은자`는 같은 순회에서 면허 ID별 한글 표시명으로만 누적한다. source batch·월 사실·GAD-NR 피처에는 넣지 않는다. 게시 위치와 사이트 한 패스 규칙은 [`company-display-name.md`](company-display-name.md)를 따른다.
+
 ## 거래·Decimal·품질 계약
 
 거래 유형은 `출고→SUPPLY`, `반품→RETURN`, `회수→RECALL`, `폐기→DISCARD`, `임대→LEASE`만 표준화한다. 알 수 없는 값은 원문을 보존하고 `transaction_type_unknown`으로 표시하며 `SUPPLY`로 바꾸지 않는다. PR-01 집계 계약이 RETURN/RECALL과 지원하지 않는 유형을 승인 전 차단한다.

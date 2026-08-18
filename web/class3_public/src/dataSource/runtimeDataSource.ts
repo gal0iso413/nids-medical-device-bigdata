@@ -30,7 +30,10 @@ export async function resolveClass3PageState(environment: RuntimeEnvironment, lo
   }
   if (source === "api") {
     try { if (!loadApi) throw new Error("API loader is unavailable."); return { kind: "api", ...(await loadApi()) }; }
-    catch { return { kind: "error", message: "Local API status check failed. No mock or local-JSON fallback was used." }; }
+    catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown error";
+      return { kind: "error", message: `Local API status check failed. No mock or local-JSON fallback was used. (${detail})` };
+    }
   }
   try { return { kind: "fixture", fixture: await loadMock(environment.requestedFixture ?? "released") }; }
   catch { return { kind: "error", message: "개발 mock fixture를 불러오지 못했습니다." }; }

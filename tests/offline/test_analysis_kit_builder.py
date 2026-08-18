@@ -81,7 +81,7 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
             "-Class3DistDirectory", str(class3 or self.class3),
             "-OutputDirectory", str(output or self.output),
         ]
-        return subprocess.run(command, text=True, capture_output=True, encoding="utf-8")
+        return subprocess.run(command, text=True, capture_output=True, encoding="utf-8", errors="replace")
 
     def test_build_is_exact_safe_atomic_idempotent_and_cleans_failures(self):
         first = self.build()
@@ -196,6 +196,21 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
                 self.assertIn(expected_error, result.stderr)
                 self.assertFalse(output.exists())
                 self.assertEqual(list(self.root.glob(".analysis-kit.tmp-*")), [])
+
+    def test_kit_hosts_use_local_apis_instead_of_static_files(self):
+        serve = (SCRIPT_SOURCE / "serve-analysis-sites.ps1").read_text(encoding="utf-8")
+        run = (SCRIPT_SOURCE / "run-analysis.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("http.server", serve)
+        self.assertIn("services.class1_local_api", serve)
+        self.assertIn("services.class3_local_api", serve)
+        self.assertIn("IndexRoot", serve)
+        self.assertIn("MartRoot", serve)
+        self.assertNotIn("publish-class1-web", run)
+        self.assertNotIn("verify-class1-web", run)
+        self.assertTrue((SCRIPT_SOURCE / "serve-class1-site.ps1").is_file())
+        self.assertTrue((SCRIPT_SOURCE / "build-class1-lookup-index.ps1").is_file())
+        self.assertTrue((SCRIPT_SOURCE / "rehearse-class1-site.ps1").is_file())
+        self.assertTrue((SCRIPT_SOURCE / "run-class1-graph-scale-gate.ps1").is_file())
 
 
 if __name__ == "__main__":

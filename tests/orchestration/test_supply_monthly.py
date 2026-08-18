@@ -18,6 +18,7 @@ from data_pipeline.checkpoints import (
     derive_supply_monthly_run_id,
 )
 from data_pipeline.ingest import create_source_lineage
+from data_pipeline.ingest.company_display_name import read_company_display_name_directory
 from data_pipeline.orchestration import (
     CompleteManifestConflictError,
     SupplyMonthlyOrchestrationError,
@@ -35,7 +36,9 @@ from data_pipeline.storage import (
 SUPPLY_HEADERS = [
     "공급일자",
     "공급한자 업체일련번호",
+    "공급자",
     "공급받은자 업체일련번호",
+    "공급받은자",
     "요양기관기호(의료기관)",
     "의료기기품목일련번호",
     "모델일련번호",
@@ -73,7 +76,9 @@ def supply_row(
     values: dict[str, object] = {
         "공급일자": f"{month}15",
         "공급한자 업체일련번호": "10",
+        "공급자": "합성공급사",
         "공급받은자 업체일련번호": "20",
+        "공급받은자": "합성수령사",
         "요양기관기호(의료기관)": None,
         "의료기기품목일련번호": item,
         "모델일련번호": model,
@@ -206,6 +211,10 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(manifest["skipped_unmatched_only_months"], ["202603"])
         self.assertNotIn(str(self.temp_dir), self.complete_path(result).read_text(encoding="utf-8"))
+        loaded = read_company_display_name_directory(self.output_root)
+        self.assertIsNotNone(loaded)
+        _manifest, names = loaded
+        self.assertEqual(set(names["display_name"]), {"합성공급사", "합성수령사"})
 
     def test_batches_are_range_indexed_and_mask_matches_join_report(self) -> None:
         self.write_supply(

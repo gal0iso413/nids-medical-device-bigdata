@@ -9,7 +9,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from data_pipeline.analysis.class3_serving_mart import build_class3_serving_marts
+from data_pipeline.analysis.class3_serving_mart import SERVING_MART_SCHEMA_VERSION, build_class3_serving_marts
 from data_pipeline.storage.monthly_fact_parquet import write_monthly_fact_partitions
 from services.class3_local_api.app import StaticRootError, create_app, create_integrated_app
 from tests.services.test_class3_local_api import fact
@@ -60,7 +60,7 @@ class Class3LocalIntegratedHostTests(unittest.TestCase):
             create_integrated_app(self.marts, self.root / "missing")
         missing_index = self.root / "missing-index"; missing_index.mkdir()
         with self.assertRaises(StaticRootError): create_integrated_app(self.marts, missing_index)
-        mart_dir = self.marts / "class3_serving_mart" / "schema_version=1.0.0"
+        mart_dir = self.marts / "class3_serving_mart" / f"schema_version={SERVING_MART_SCHEMA_VERSION}"
         (mart_dir / "index.html").write_text("not served", encoding="utf-8")
         with self.assertRaises(StaticRootError): create_integrated_app(self.marts, mart_dir)
         (self.static / "generated").mkdir()

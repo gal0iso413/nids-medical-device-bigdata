@@ -7,11 +7,11 @@ const releasedFixture = loadDevelopmentMock("released");
 const emptyFixture = loadDevelopmentMock("empty");
 
 const requiredHeadings = [
-  "업체·품목군 비교분석",
+  "품목 비교분석",
   "품목군·품목명 검색",
   "선택 품목",
   "기간 선택",
-  "품목별 비교 결과",
+  "선택한 품목 비교",
   "월별 추세",
   "선택 포트폴리오 요약",
   "관측된 유통 도달 구조",

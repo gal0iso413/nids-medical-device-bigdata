@@ -11,7 +11,14 @@ import unittest
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from data_pipeline.analysis.class3_serving_mart import build_class3_serving_marts
+from data_pipeline.analysis.class3_serving_mart import (
+    Class3ServingMartConflictError,
+    Class3ServingMartError,
+    MANIFEST_FILENAME,
+    SERVING_MART_DATASET_NAME,
+    SERVING_MART_SCHEMA_VERSION,
+    build_class3_serving_marts,
+)
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
 from data_pipeline.storage.monthly_fact_parquet import write_monthly_fact_partitions
 from services.class3_local_api.app import create_app
@@ -62,7 +69,7 @@ class Class3LocalApiTests(unittest.TestCase):
         return TestClient(create_app(self.marts))
 
     def manifest_path(self) -> Path:
-        return self.marts / "class3_serving_mart" / "schema_version=1.0.0" / "_manifest.json"
+        return self.marts / "class3_serving_mart" / f"schema_version={SERVING_MART_SCHEMA_VERSION}" / "_manifest.json"
 
     def test_health_status_catalog_and_decimal_string(self) -> None:
         with self.client() as client:
@@ -80,6 +87,9 @@ class Class3LocalApiTests(unittest.TestCase):
         self.assertEqual(comparison.status_code, 200)
         self.assertEqual(comparison.json()["product_catalog"], [{"product_id": "p3:" + "1" * 64, "item_group_id": "Group A", "item_name_id": "Shared"}])
         self.assertIsInstance(comparison.json()["product_month"][0]["amount_sum_clean"], str)
+        concentration = comparison.json()["selection_concentration"]
+        self.assertEqual(concentration[0]["supplier_hhi_tx"], "1.000000")
+        self.assertNotIn("entity_hash", json.dumps(comparison.json()))
 
     def test_scope_request_limits_and_sql_like_query_are_bounded(self) -> None:
         with self.client() as client:
@@ -135,9 +145,39 @@ class Class3LocalApiTests(unittest.TestCase):
             first = client.post("/v1/comparisons", json=payload).json()
             second = client.post("/v1/comparisons", json=payload).json()
         self.assertEqual(first, second)
+        self.assertEqual(first["selections"], [{"selection_type": "item_group", "item_group_id": "Group A"}])
         rendered = json.dumps(first, sort_keys=True)
-        for prohibited in ("src_company_id", "dst_company_id", "co:raw", "hosp:raw", "co:other", "hosp:other"):
+        for prohibited in ("src_company_id", "dst_company_id", "co:raw", "hosp:raw", "co:other", "hosp:other", "entity_hash"):
             self.assertNotIn(prohibited, rendered)
+
+    def test_comparison_returns_tx_composition_hhi_and_period_overlap(self) -> None:
+        payload = {
+            "period_start": "202401",
+            "period_end": "202402",
+            "selections": [
+                {"selection_type": "item_group", "item_group_id": "Group A"},
+                {"selection_type": "item_group", "item_group_id": "Group B"},
+            ],
+        }
+        with self.client() as client:
+            result = client.post("/v1/comparisons", json=payload).json()
+        group_a = next(
+            row for row in result["selection_concentration"]
+            if row["item_group_id"] == "Group A" and row["month"] == "202401"
+        )
+        self.assertEqual(group_a["supplier_hhi_tx"], "0.500000")
+        self.assertEqual(group_a["supplier_count"], 2)
+        composition = next(
+            row for row in result["endpoint_composition"]
+            if row["month"] == "202401" and row["product_scope"] == "item_group"
+            and row["product_scope_id"] == "Group A" and row["endpoint"] == "receiver"
+            and row["dimension"] == "type"
+        )
+        self.assertIn("tx_count", composition)
+        overlap = result["portfolio_overlap"]
+        self.assertEqual(overlap["supplier_union_count"], 3)
+        self.assertEqual(overlap["pairs"][0]["supplier_intersection_count"], 0)
+        self.assertNotIn("entity_hash", json.dumps(result))
 
 
 if __name__ == "__main__":

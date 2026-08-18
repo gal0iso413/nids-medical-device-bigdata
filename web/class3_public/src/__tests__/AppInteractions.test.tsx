@@ -82,7 +82,7 @@ describe("Class 3 comparison interactions", () => {
   it("shows only selected per-item results and released labels", () => {
     renderReleased();
     removeSelection("SYNTHETIC_ITEM_GROUP_ALPHA");
-    const resultSection = screen.getByRole("heading", { name: "품목별 비교 결과" }).closest("section");
+    const resultSection = screen.getByRole("heading", { name: "선택한 품목 비교" }).closest("section");
     expect(resultSection).not.toBeNull();
     const results = within(resultSection!);
     expect(results.queryByText("synthetic:item-group:alpha")).not.toBeInTheDocument();

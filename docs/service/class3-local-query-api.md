@@ -35,8 +35,9 @@ are returned as JSON strings, never JSON numbers.
 - `GET /v1/catalog/item-names?item_group_id=&q=&limit=` requires the parent item group.
 - `POST /v1/comparisons` accepts at most 10 item-group or parent-scoped item-name selections and a verified period of at most 36 months.
 
-Responses contain product/group trends, endpoint compositions, and coverage only;
-they never expose raw source supplier or receiver identifiers.
+Responses contain product/group trends, endpoint compositions, coverage,
+per-item supplier HHI, and selection-set overlap counts only; they never expose
+raw source supplier or receiver identifiers or membership hashes.
 
 ## Dependencies and next steps
 

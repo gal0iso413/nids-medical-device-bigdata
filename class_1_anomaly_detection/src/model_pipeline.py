@@ -22,6 +22,21 @@ ROLE_VOCABULARY = (
     "manufacturer", "importer", "distributor", "hospital", "other",
     "multi_role", "unknown",
 )
+_ROLE_TYPE_ALIASES = {
+    key.casefold(): role
+    for key, role in (
+        ("manufacturer", "manufacturer"),
+        ("importer", "importer"),
+        ("distributor", "distributor"),
+        ("hospital", "hospital"),
+        ("other", "other"),
+        ("제조업", "manufacturer"),
+        ("수입업", "importer"),
+        ("판매(임대)업", "distributor"),
+        ("의료기관", "hospital"),
+        ("기타", "other"),
+    )
+}
 EXCLUDED_FEATURES = (
     "bc", "price_zscore", "price_flag", "time_lag", "hhi", "pdi",
     "edge_attr", "company_name", "unique_udi_count",
@@ -91,15 +106,23 @@ def _present(values: Iterable[Any]) -> tuple[str, ...]:
                          if pd.notna(value) and str(value).strip()}))
 
 
+def _canonical_role_token(value: Any) -> str | None:
+    if pd.isna(value) or not str(value).strip():
+        return None
+    return _ROLE_TYPE_ALIASES.get(str(value).strip().casefold())
+
+
 def _role(values: Iterable[Any]) -> str:
     materialized = tuple(values)
     if any(pd.isna(value) or not str(value).strip() for value in materialized):
         return "unknown"
-    present = _present(materialized)
-    allowed = tuple(value for value in present if value in ROLE_VOCABULARY[:5])
-    if len(allowed) > 1 or len(present) > len(allowed):
+    mapped = [_canonical_role_token(value) for value in materialized]
+    if any(token is None for token in mapped):
         return "multi_role"
-    return allowed[0] if allowed else "unknown"
+    unique = tuple(sorted(set(mapped)))
+    if len(unique) != 1:
+        return "multi_role"
+    return unique[0]
 
 
 def _dimension(values: Iterable[Any]) -> tuple[str | None, bool]:
@@ -170,6 +193,51 @@ def build_model_graph(
     edges = pd.DataFrame.from_records(records, columns=edge_columns)
     nodes = tuple(sorted(set(scoped["src_company_id"]) | set(scoped["dst_company_id"])))
     return ModelGraph(anchor_month, window, nodes, edges, self_loop_count)
+
+
+def one_hop_graph_payload(
+    graph: ModelGraph,
+    *,
+    selected_entity_id: str,
+    entity_metadata: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Return the UI 1-hop neighborhood of one graph node.  This is not the training graph."""
+    if selected_entity_id not in graph.nodes:
+        raise ValueError("selected_entity_id is absent from the model graph")
+    scoped_edges = graph.edges.loc[
+        graph.edges["src_company_id"].eq(selected_entity_id)
+        | graph.edges["dst_company_id"].eq(selected_entity_id)
+    ].sort_values(["src_company_id", "dst_company_id"], kind="stable")
+    node_ids = tuple(sorted(set(scoped_edges["src_company_id"]) | set(scoped_edges["dst_company_id"])))
+    if not node_ids:
+        node_ids = (selected_entity_id,)
+    nodes = []
+    for entity_id in node_ids:
+        metadata = entity_metadata[entity_id]
+        nodes.append({
+            "entity_id": entity_id,
+            "selected": entity_id == selected_entity_id,
+            "role_group": metadata["role_group"],
+            "region": metadata["region"],
+            "region_missing_or_conflict": bool(metadata["region_missing_or_conflict"]),
+        })
+    edges = _json_value(scoped_edges.to_dict("records"))
+    return {
+        "graph_scope": "one_hop",
+        "selected_entity_id": selected_entity_id,
+        "anchor_month": graph.anchor_month,
+        "window_months": list(graph.window_months),
+        "nodes": nodes,
+        "edges": edges,
+        "graph_summary": {
+            "selected_node_count": 1,
+            "one_hop_counterparty_count": max(0, len(node_ids) - 1),
+            "edge_count": len(edges),
+            "self_loop_excluded_count": int(graph.self_loop_count),
+            "truncated": False,
+            "truncation_reason": None,
+        },
+    }
 
 
 def model_edge_index(graph: ModelGraph) -> tuple[tuple[int, ...], tuple[int, ...]]:

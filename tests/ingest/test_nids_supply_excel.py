@@ -833,6 +833,52 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         mocked_load.assert_called_once_with(path, read_only=True, data_only=True)
         self.assertEqual(proxy.close_calls, 1)
 
+    def test_company_display_names_are_not_identifiers_or_batch_columns(self) -> None:
+        headers = ["공급자", "공급받은자", *HEADERS]
+        path = self.temp_dir / "display-names.xlsx"
+        first = dict(zip(HEADERS, row(**{"공급내역일련번호": "301", "공급한자 업체일련번호": "10", "공급받은자 업체일련번호": "20"})))
+        first["공급자"] = "알파의료"
+        first["공급받은자"] = "베타병원"
+        second = dict(zip(HEADERS, row(**{"공급내역일련번호": "302", "공급한자 업체일련번호": "10", "공급받은자 업체일련번호": "20"})))
+        second["공급자"] = "알파의료"
+        second["공급받은자"] = "다른상호"
+        fourth = dict(zip(HEADERS, row(**{"공급내역일련번호": "304", "공급한자 업체일련번호": "10", "공급받은자 업체일련번호": "20"})))
+        fourth["공급자"] = "알파의료"
+        fourth["공급받은자"] = "베타병원"
+        third = dict(zip(HEADERS, row(**{"공급내역일련번호": "303", "공급한자 업체일련번호": None, "공급받은자 업체일련번호": "20"})))
+        third["공급자"] = "이름만있는행"
+        third["공급받은자"] = "베타병원"
+        write_workbook(
+            path,
+            sheets=[
+                (
+                    "data",
+                    [
+                        headers,
+                        [first.get(header) for header in headers],
+                        [second.get(header) for header in headers],
+                        [fourth.get(header) for header in headers],
+                        [third.get(header) for header in headers],
+                    ],
+                )
+            ],
+        )
+        with stream_nids_supply_excel([path]) as stream:
+            frame = pd.concat(list(stream), ignore_index=True)
+            names = {row["entity_id"]: row for row in stream.display_name_rows()}
+            report = stream.report
+        self.assertEqual(set(frame["src_company_id"]), {"co:10"})
+        self.assertEqual(set(frame["dst_company_id"]), {"co:20"})
+        self.assertNotIn("display_name", frame.columns)
+        self.assertNotIn("supplier_display_name", frame.columns)
+        self.assertNotIn("알파의료", "".join(frame.astype(str).to_numpy().ravel()))
+        self.assertNotIn("공급자", report.sheet_profiles[0].extra_columns)
+        self.assertEqual(names["co:10"]["display_name"], "알파의료")
+        self.assertEqual(names["co:20"]["display_name"], "베타병원")
+        self.assertTrue(names["co:20"]["name_conflict"])
+        self.assertFalse(names["co:10"]["name_conflict"])
+        self.assertEqual(report.rejected_by_reason["party_identity_incomplete"], 1)
+
     def test_output_columns_match_pr01_source_contract_exactly(self) -> None:
         actual, report = data_rows(self.workbook())
 

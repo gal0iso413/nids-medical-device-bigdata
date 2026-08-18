@@ -23,6 +23,7 @@ from class_1_anomaly_detection.src.model_pipeline import (
     build_class1_pipeline,
     build_gadnr_features,
     build_model_graph,
+    one_hop_graph_payload,
     serialize_service_results,
 )
 from data_pipeline.contracts.supply_monthly import FACT_SCHEMA_VERSION
@@ -200,43 +201,6 @@ def _existing_status(
     return "unchanged"
 
 
-def _one_hop_graph_payload(
-    *, config: Class1OfflineAnchorConfig, graph: Any, entity_metadata: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    selected = config.selected_entity_id
-    scoped_edges = graph.edges.loc[
-        graph.edges["src_company_id"].eq(selected) | graph.edges["dst_company_id"].eq(selected)
-    ].sort_values(["src_company_id", "dst_company_id"], kind="stable")
-    node_ids = tuple(sorted(set(scoped_edges["src_company_id"]) | set(scoped_edges["dst_company_id"])))
-    nodes = []
-    for entity_id in node_ids:
-        metadata = entity_metadata[entity_id]
-        nodes.append({
-            "entity_id": entity_id,
-            "selected": entity_id == selected,
-            "role_group": metadata["role_group"],
-            "region": metadata["region"],
-            "region_missing_or_conflict": bool(metadata["region_missing_or_conflict"]),
-        })
-    edges = _json_value(scoped_edges.to_dict("records"))
-    return {
-        "graph_scope": "one_hop",
-        "selected_entity_id": selected,
-        "anchor_month": graph.anchor_month,
-        "window_months": graph.window_months,
-        "nodes": nodes,
-        "edges": edges,
-        "graph_summary": {
-            "selected_node_count": 1,
-            "one_hop_counterparty_count": max(0, len(node_ids) - 1),
-            "edge_count": len(edges),
-            "self_loop_excluded_count": graph.self_loop_count,
-            "truncated": False,
-            "truncation_reason": None,
-        },
-    }
-
-
 def _insufficient_payload(config: Class1OfflineAnchorConfig, graph: Any, features: pd.DataFrame, feature_manifest: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     reason = "minimum_node_count" if len(graph.nodes) < config.minimum_node_count else "minimum_edge_count"
     graph_summary = {"node_count": len(graph.nodes), "edge_count": len(graph.edges), "self_loop_count": graph.self_loop_count}
@@ -266,8 +230,8 @@ def run_class1_offline_anchor(
     graph_features, graph_feature_manifest = build_gadnr_features(
         fact, graph, region_vocabulary=config.region_vocabulary,
     )
-    one_hop_payload = _one_hop_graph_payload(
-        config=config, graph=graph,
+    one_hop_payload = one_hop_graph_payload(
+        graph, selected_entity_id=config.selected_entity_id,
         entity_metadata=graph_feature_manifest["entity_metadata"],
     )
     if len(graph.nodes) < config.minimum_node_count or len(graph.edges) < config.minimum_edge_count:

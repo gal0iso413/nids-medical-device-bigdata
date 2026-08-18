@@ -82,8 +82,14 @@ HEADER_ALIASES: Final[dict[str, tuple[str, ...]]] = {
     "supply_serial": ("공급내역일련번호",),
     "reported_composite_key": ("공급내역보고자료복합Key",),
 }
+DISPLAY_NAME_ALIASES: Final[dict[str, tuple[str, ...]]] = {
+    "supplier_display_name": ("공급자",),
+    "receiver_display_name": ("공급받은자",),
+}
 CONSUMED_HEADERS: Final[frozenset[str]] = frozenset(
-    alias for aliases in HEADER_ALIASES.values() for alias in aliases
+    alias
+    for aliases in (*HEADER_ALIASES.values(), *DISPLAY_NAME_ALIASES.values())
+    for alias in aliases
 )
 PROFILE_EXPECTED_FIELDS: Final[frozenset[str]] = frozenset(HEADER_ALIASES)
 STRUCTURE_REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
@@ -395,6 +401,46 @@ def _normalize_text(value: Any) -> str | None:
     return str(value).strip()
 
 
+def _normalize_display_name(value: Any) -> str | None:
+    if _is_missing(value):
+        return None
+    collapsed = " ".join(str(value).split())
+    if not collapsed:
+        return None
+    return collapsed[:200].rstrip() if len(collapsed) > 200 else collapsed
+
+
+def _observe_display_name(
+    counts: dict[str, Counter[str]],
+    entity_id: str,
+    raw_name: Any,
+) -> None:
+    name = _normalize_display_name(raw_name)
+    if name is None:
+        return
+    counts.setdefault(entity_id, Counter())[name] += 1
+
+
+def finalize_display_name_rows(
+    counts: dict[str, Counter[str]],
+) -> tuple[dict[str, Any], ...]:
+    """Most-frequent display name per license ID; names are never identifiers."""
+    rows: list[dict[str, Any]] = []
+    for entity_id, name_counts in counts.items():
+        ranked = sorted(name_counts.items(), key=lambda item: (-item[1], item[0]))
+        rows.append(
+            {
+                "entity_id": entity_id,
+                "display_name": ranked[0][0],
+                "observation_count": int(sum(name_counts.values())),
+                "distinct_name_count": int(len(name_counts)),
+                "name_conflict": len(name_counts) > 1,
+            }
+        )
+    rows.sort(key=lambda row: str(row["entity_id"]))
+    return tuple(rows)
+
+
 def _parse_decimal(value: Any) -> tuple[Decimal | None, str | None]:
     if _is_missing(value):
         return None, "missing"
@@ -445,10 +491,12 @@ def _source_row_id(raw: dict[str, Any]) -> str | None:
     return f"nids-row-v1:{sha256(_canonical_json_bytes(components)).hexdigest()}"
 
 
-def _field_positions(headers: tuple[str, ...]) -> dict[str, int]:
+def _alias_positions(
+    headers: tuple[str, ...], aliases: dict[str, tuple[str, ...]]
+) -> dict[str, int]:
     positions: dict[str, int] = {}
-    for field_name, aliases in HEADER_ALIASES.items():
-        found = [headers.index(alias) for alias in aliases if alias in headers]
+    for field_name, field_aliases in aliases.items():
+        found = [headers.index(alias) for alias in field_aliases if alias in headers]
         if len(found) > 1:
             raise DataSheetDiscoveryError(
                 f"Multiple aliases found for mapped field {field_name!r}"
@@ -456,6 +504,13 @@ def _field_positions(headers: tuple[str, ...]) -> dict[str, int]:
         if found:
             positions[field_name] = found[0]
     return positions
+
+
+def _field_positions(headers: tuple[str, ...]) -> dict[str, int]:
+    return {
+        **_alias_positions(headers, HEADER_ALIASES),
+        **_alias_positions(headers, DISPLAY_NAME_ALIASES),
+    }
 
 
 def _validate_mapped_sheet_schema(
@@ -502,6 +557,7 @@ def _map_row(
     source_version: str,
     location: str,
     report: SupplyIngestionReport,
+    display_name_counts: dict[str, Counter[str]],
 ) -> dict[str, Any] | None:
     source_row_id = _source_row_id(raw)
     diagnostic = source_row_id or location
@@ -627,9 +683,17 @@ def _map_row(
     if amount is not None and amount > BARCODE_SUSPECT_THRESHOLD:
         flags.add("amount_barcode_entry_error_suspected")
 
+    src_company_id = f"co:{src}"
+    _observe_display_name(
+        display_name_counts, src_company_id, raw.get("supplier_display_name")
+    )
+    _observe_display_name(
+        display_name_counts, dst_company_id, raw.get("receiver_display_name")
+    )
+
     return {
         "supply_date": supply_date,
-        "src_company_id": f"co:{src}",
+        "src_company_id": src_company_id,
         "dst_company_id": dst_company_id,
         "item_serial": item_serial,
         "model_serial": model_serial,
@@ -693,9 +757,13 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
             )
             self._source_version = "nids-supply-benchmark-unhashed-v1"
         self.report = SupplyIngestionReport()
+        self._display_name_counts: dict[str, Counter[str]] = {}
         self._started = False
         self._closed = False
         self._active_generator: Iterator[pd.DataFrame] | None = None
+
+    def display_name_rows(self) -> tuple[dict[str, Any], ...]:
+        return finalize_display_name_rows(self._display_name_counts)
 
     def __enter__(self) -> SupplyExcelStream:
         if self._closed:
@@ -797,6 +865,7 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
                                     path.name, discovered.name, row_number
                                 ),
                                 report=self.report,
+                                display_name_counts=self._display_name_counts,
                             )
                             if mapped is None:
                                 continue

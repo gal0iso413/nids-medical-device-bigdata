@@ -12,6 +12,7 @@ venv/
 shared_data/*.xlsx
 *.csv
 *.json
+!config/*.example.json
 class_*/output/
 *.zip
 *.whl
@@ -30,6 +31,18 @@ offline-field-kits/
 **/class3_serving_mart/**/_manifest.json
 **/class3_serving_mart/.schema_version=*.tmp-*
 .class3-serving-mart-*/
+
+# Class 1 lookup-index materializations (rebuild from a completed GAD-NR run)
+**/class1_lookup_index/**/*.parquet
+**/class1_lookup_index/**/_manifest.json
+**/class1_lookup_index/.schema_version=*.tmp-*
+.class1-lookup-index-*/
+
+# Korean company display-name directory (side-channel from supply Excel ingest)
+**/company_display_name/**/*.parquet
+**/company_display_name/**/_manifest.json
+**/company_display_name/.schema_version=*.tmp-*
+.company-display-name-*/
 
 # Immutable master product lookup outputs (source/tests/docs remain tracked)
 **/master_product_lookup/**/*.sqlite

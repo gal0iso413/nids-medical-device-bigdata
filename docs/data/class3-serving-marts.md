@@ -29,7 +29,7 @@ never opens Excel, a checkpoint database, a scale-preflight report, or a raw
 workbook. A missing, invalid, or unverified requested partition fails the run.
 
 The output is atomically published at
-`class3_serving_mart/schema_version=1.0.0`. A canonical `_manifest.json` records
+`class3_serving_mart/schema_version=1.1.0`. A canonical `_manifest.json` records
 only portable partition names, verified checksums, fact/schema versions, period,
 output row counts/checksums, and a deterministic fingerprint. It contains no
 absolute paths, usernames, machine names, or supplier/receiver identifiers.
@@ -46,7 +46,8 @@ root. Materialized Parquet and manifests are ignored by Git.
 | `product_catalog` | `product_id × item_group_id × item_name_id` | Includes source months; item-name lookup is always parent (`item_group_id`) scoped. |
 | `product_month` | `month × product_id` | Decimal sums remain Decimal. Supplier/receiver distincts are exact. UDI and active-day fields are explicitly upstream-cell sums because the monthly fact does not retain raw UDI/day identity. |
 | `item_group_month` | `month × item_group_id` | Uses exact DuckDB `COUNT(DISTINCT)` over fact endpoint identifiers; it never sums product-level distincts. |
-| `endpoint_composition` | `month × product_scope × endpoint × dimension × value` | `product_scope` is `product` or `item_group`; only exact distinct counts are persisted—never source endpoint identifiers. |
+| `endpoint_composition` | `month × product_scope × endpoint × dimension × value` | `product_scope` is `product` or `item_group`; exact distinct counts and transaction counts are persisted—never source endpoint identifiers. |
+| `endpoint_membership` | `month × product_scope × endpoint × entity_hash` | Hashed supplier/receiver membership for item-group and parent-scoped item-name grains. Used only to compute per-item HHI and set overlap; hashes are never returned by the query API. |
 | `coverage` | `month` | Aggregate observations, additive measures, valid-row counts, endpoint-dimension valid transaction counts and coverage ratios, plus source quality flags. These are aggregate observations, not a claim that data are publicly publishable. |
 
 DuckDB is an in-process batch aggregation dependency only. FastAPI, DuckDB HTTP,

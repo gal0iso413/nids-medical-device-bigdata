@@ -3,10 +3,28 @@ from __future__ import annotations
 import hashlib, json, shutil, subprocess
 from pathlib import Path, PurePosixPath
 
-ALLOWED_UNTRACKED = ("tools/offline/analysis-kit/", "docs/data/offline-analysis-python-environment.md", "docs/service/class3-local-integrated-host.md", "tests/offline/", "tests/services/")
-TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "services/class3_local_api/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "docs/service/", "requirements-data-pipeline.txt", "README.md")
+ALLOWED_UNTRACKED = (
+    "tools/offline/analysis-kit/",
+    "config/class1-graph-scale-gate.example.json",
+    "data_pipeline/analysis/class1_lookup_index.py",
+    "data_pipeline/ingest/company_display_name.py",
+    "data_pipeline/observability/class1_graph_scale_gate.py",
+    "docs/data/offline-analysis-python-environment.md",
+    "docs/data/class1-graph-scale-gate.md",
+    "docs/data/company-display-name.md",
+    "docs/service/class3-local-integrated-host.md",
+    "docs/service/class1-local-query-api.md",
+    "docs/service/class1-local-integrated-host.md",
+    "services/class1_local_api/",
+    "tests/offline/",
+    "tests/services/",
+    "tests/analysis/",
+    "tests/ingest/",
+    "tests/observability/",
+)
+TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "services/class1_local_api/", "services/class3_local_api/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "docs/service/", "requirements-data-pipeline.txt", "README.md")
 FORBIDDEN_SUFFIXES = {".xlsx", ".xls", ".xlsm", ".parquet", ".sqlite", ".whl", ".zip", ".exe"}
-FORBIDDEN_PARTS = {".git", "node_modules", "dist", "generated", "checkpoint", "checkpoints", "output"}
+FORBIDDEN_PARTS = {".git", "node_modules", "dist", "generated", "checkpoint", "checkpoints", "output", "__pycache__"}
 
 def canonical(value): return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 def _git(root: Path, *args: str) -> list[str]: return subprocess.check_output(("git", "-C", str(root), *args), text=True).splitlines()

@@ -10,7 +10,10 @@ SQLite, generated JSON, model results, or site-specific configuration.
 Run directly in this Cursor checkout when the approved local Python environment
 is already available. Use the [offline analysis kit](../../tools/offline/analysis-kit/README.md)
 when moving the workflow to another PC; its installer verifies the exact wheel
-set before creating an isolated environment.
+set before creating an isolated environment. The kit serves Class 1 through the
+localhost lookup API (`127.0.0.1:8011`) and Class 3 through the localhost
+comparison API (`127.0.0.1:8013`). It does not publish generated JSON into the
+static site roots.
 
 Do not use removed Class 1 graph/Excel/model-comparison commands or any
 Streamlit entrypoint. The only Class 1 runtime entrypoint is
@@ -40,7 +43,10 @@ python -m data_pipeline.cli preflight --config C:/secure/data-preparation.json
 python -m data_pipeline.cli run --config C:/secure/data-preparation.json
 python -m data_pipeline.offline.local_analysis_tools inventory --parquet-root D:/nids/monthly-fact --limit 20
 python -m data_pipeline.offline.class3_analysis_export --config C:/secure/class3-export.json
+python -m data_pipeline.observability.class1_graph_scale_gate --config C:/secure/class1-graph-scale-gate.json --report C:/secure/reports/class1-graph-scale-gate.json
 python -m class_1_anomaly_detection.src.offline_anchor_runner --config C:/secure/class1-anchor.json
+python -m data_pipeline.ingest.company_display_name --supply-workbooks C:/secure/inputs/supply.xlsx --output-root D:/nids/monthly-fact
+python -m data_pipeline.analysis.class1_lookup_index --fact-root D:/nids/monthly-fact --run-root C:/workspace/class_1_anomaly_detection/output/offline-anchor --output-root C:/secure/class1-lookup-index --anchor-month 202403
 python -m data_pipeline.offline.local_analysis_tools verify-class1 --output-root C:/workspace/class_1_anomaly_detection/output/offline-anchor --anchor-month 202403
 python -m data_pipeline.offline.local_analysis_tools publish-class1-web --output-root C:/workspace/class_1_anomaly_detection/output/offline-anchor --web-public-root C:/workspace/web/class1_internal/public --anchor-month 202403
 python -m data_pipeline.offline.local_analysis_tools verify-class1-web --web-public-root C:/workspace/web/class1_internal/public --anchor-month 202403 --selected-entity-id internal-entity-id
@@ -59,6 +65,9 @@ npm --prefix web/class3_public run dev
 
 $env:VITE_CLASS1_DATA_SOURCE = "local"
 $env:VITE_CLASS1_HANDOFF_URL = "/generated/class1-current.json"
+npm --prefix web/class1_internal run dev
+
+$env:VITE_CLASS1_DATA_SOURCE = "api"
 npm --prefix web/class1_internal run dev
 ```
 
