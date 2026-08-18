@@ -16,7 +16,7 @@ class SourceSnapshotTests(unittest.TestCase):
             self.assertEqual(first["source_tree_fingerprint"], second["source_tree_fingerprint"])
             self.assertEqual(first["source_mode"], "working-tree")
             self.assertIn("tools/offline/analysis-kit/source_snapshot.py", [x["relative_path"] for x in first["files"]])
-            self.assertIn("services/class3_local_api/app.py", [x["relative_path"] for x in first["files"]])
+            self.assertIn("services/class2_local_api/app.py", [x["relative_path"] for x in first["files"]])
             self.assertIn("services/class1_local_api/app.py", [x["relative_path"] for x in first["files"]])
             self.assertIn("data_pipeline/analysis/class1_lookup_index.py", [x["relative_path"] for x in first["files"]])
             self.assertIn("data_pipeline/ingest/company_display_name.py", [x["relative_path"] for x in first["files"]])

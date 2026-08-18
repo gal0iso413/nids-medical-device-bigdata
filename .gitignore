@@ -5,11 +5,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-.streamlit/secrets.toml
 *.egg-info/
 .pytest_cache/
 .DS_Store
-shared_data/*.xlsx
+.local-dekade-inputs/
 *.csv
 *.json
 !config/*.example.json
@@ -26,11 +25,11 @@ offline-field-kits/
 **/schema_version=*/.month=*.tmp-*/
 .monthly-fact-storage-test-*/
 
-# Class 3 serving-mart materializations (rebuild from verified monthly facts)
-**/class3_serving_mart/**/*.parquet
-**/class3_serving_mart/**/_manifest.json
-**/class3_serving_mart/.schema_version=*.tmp-*
-.class3-serving-mart-*/
+# Class 2 serving-mart materializations (rebuild from verified monthly facts)
+**/class2_serving_mart/**/*.parquet
+**/class2_serving_mart/**/_manifest.json
+**/class2_serving_mart/.schema_version=*.tmp-*
+.class2-serving-mart-*/
 
 # Class 1 lookup-index materializations (rebuild from a completed GAD-NR run)
 **/class1_lookup_index/**/*.parquet
@@ -57,24 +56,21 @@ offline-field-kits/
 **/supply_monthly_orchestration/**/._*.tmp-*
 .supply-checkpoint-*/
 
-# Hermes role deliverables (local / ephemeral; not versioned)
-class_*/research/*
-!class_*/research/.gitkeep
-class_*/notes/*
-!class_*/notes/.gitkeep
-class_*/output/*
-
-# Progess files
-PROGRESS.md
-
 # Cursor
 .cursor/
 .agents/skills/
 class_1_anomaly_detection/data/parquet/
-web/class3_public/public/generated/
+web/class2_public/public/generated/
+web/class2_public/node_modules/
+web/class2_public/dist/
 web/class1_internal/public/generated/
 web/class1_internal/node_modules/
 web/class1_internal/dist/
+!web/class2_public/package.json
+!web/class2_public/package-lock.json
+!web/class2_public/tsconfig.json
+!web/class2_public/src/mock/schema/*.json
+!web/class2_public/src/mock/fixtures/*.json
 !web/class1_internal/package.json
 !web/class1_internal/package-lock.json
 !web/class1_internal/tsconfig.json

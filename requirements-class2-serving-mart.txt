@@ -1,0 +1,2 @@
+# Batch-only relational aggregation for Class 2 serving marts.
+duckdb==1.5.5

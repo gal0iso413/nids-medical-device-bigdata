@@ -9,7 +9,7 @@ import tomllib
 from typing import Any, Final
 
 
-CONFIG_VERSION: Final = "1.0.0"
+CONFIG_VERSION: Final = "1.1.0"
 _HEX_PATTERN: Final = re.compile(r"^[0-9a-f]{64}$")
 
 

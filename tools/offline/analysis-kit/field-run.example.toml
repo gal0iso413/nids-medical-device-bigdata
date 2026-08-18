@@ -1,7 +1,11 @@
-config_version = "1.0.0"
+config_version = "1.1.0"
 
 [paths]
-supply_workbooks = ["D:/NIDS Input/supply.xlsx"]
+supply_workbooks = [
+  "D:/NIDS Input/공급내역보고자료(20260101~20260110).xlsx",
+  "D:/NIDS Input/공급내역보고자료(20260111~20260120).xlsx",
+  "D:/NIDS Input/공급내역보고자료(20260121~20260131).xlsx",
+]
 checkpoint_root = "D:/NIDS Run/checkpoints"
 output_root = "D:/NIDS Run/monthly-facts"
 
@@ -14,13 +18,14 @@ batch_size = 10000
 max_month_fact_bytes = 536870912
 minimum_free_bytes = 0
 
-[class3_export]
-# Existing UTF-8 JSON config for data_pipeline.offline.class3_analysis_export.
-config = "D:/NIDS Run/class3-export.json"
+[class2_export]
+# Existing UTF-8 JSON config for data_pipeline.offline.class2_analysis_export.
+config = "D:/NIDS Run/class2-export.json"
 
 [class1]
 # Existing UTF-8 JSON config for class_1_anomaly_detection.src.offline_anchor_runner.
+# One file per completed GAD-NR anchor. The kit loops the latest six anchors.
 config = "D:/NIDS Run/class1-anchor.json"
 
 # Lookup index, serving marts, and localhost hosts are separate kit scripts.
-# Do not publish generated JSON into sites/class1 or sites/class3.
+# Do not publish generated JSON into sites/class1 or sites/class2.

@@ -9,12 +9,12 @@ analysis artifacts.
 - [Run local analysis directly](docs/data/local-analysis-turnkey-runbook.md)
 - [Run the offline kit on another PC](tools/offline/analysis-kit/README.md)
 - [Class 1 React interface](web/class1_internal/)
-- [Class 3 React interface](web/class3_public/)
+- [Class 2 React interface](web/class2_public/)
 
 Class 1 runs the GAD-NR offline anchor runner over verified monthly Parquet,
-then publishes a restricted-safe handoff for the React interface. Class 3
+then publishes a restricted-safe handoff for the React interface. Class 2
 exports local analysis JSON from the same verified monthly Parquet for its
-React interface. Class 2 is unchanged by this cleanup.
+React interface.
 
 ## Authoritative documents
 
@@ -23,8 +23,9 @@ React interface. Class 2 is unchanged by this cleanup.
 3. `docs/decisions/`
 4. `docs/specs/`
 
-Documents in `shared_docs/structured/` are historical problem and data context
-only; they do not define a runtime entrypoint.
+`shared_docs/official/` holds field dictionaries. The remaining file in
+`shared_docs/structured/` is onsite production calibration. Neither defines a
+runtime entrypoint.
 
 Do not commit Excel, Parquet, SQLite, generated JSON, model results, ZIP,
 wheel, executable, or site-specific configuration files. Do not interpret a

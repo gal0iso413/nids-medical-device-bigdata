@@ -74,7 +74,7 @@ UDI-only inflation indicates one UDI-DI maps to multiple master license rows; us
 | `class1_path_feasibility` | 요양기관기호 null 54.58% | Graph paths to hospital incomplete for ~half of rows |
 | `class2_expiry_field_제조연월` | null 66.87% | Survival/expiry features degraded |
 | `class2_master_lifecycle_*` | 허가일자, 품목취소취하여부, UDIDI사용종료여부, 위탁제조자, 해외제조원 — **column missing** from master export | Lifecycle modeling needs NIDS field addition or alternate source |
-| `class3_master_field_*` | 한벌구성여부, 조합의료기기여부, 요양급여코드 — **column missing** from master export | MCDM reimbursement/combination flags unavailable in current master |
+| `class2_master_field_*` | 한벌구성여부, 조합의료기기여부, 요양급여코드 — **column missing** from master export | MCDM reimbursement/combination flags unavailable in current master |
 
 ## Class readiness snapshot
 
@@ -86,21 +86,19 @@ UDI-only inflation indicates one UDI-DI maps to multiple master license rows; us
 
 ## Drift vs local top7 sample
 
-Local `shared_data/top7_*` workbooks are a **small stratified sample** (~221 master rows, ~704k supply rows). Agents must treat onsite metrics as **production calibration targets** when interpreting top7 EDA — expect higher volume, confirmed join rates, and null-rate patterns above.
+Local top7 workbooks used during the 2026-06-18 visit are a **small
+stratified sample** (~221 master rows, ~704k supply rows). Treat the onsite
+metrics as **production calibration targets** — expect higher volume,
+confirmed join rates, and null-rate patterns above.
 
 ## Open questions (PM / NIDS)
 
-Document answers in agent `notes/` or PM tracker as resolved:
+Document answers in the PM tracker as resolved:
 
 1. Are extreme 공급단가/공급금액 values data entry errors or valid edge cases?
 2. Why does UDI-only join exceed 100% — multiple licenses per UDI-DI by design?
 3. Will NIDS add missing master columns (한벌구성여부, 조합의료기기여부, 요양급여코드, lifecycle fields)?
 4. Is 요양기관기호 null expected for non-hospital supply forms (B2B, pharmacy)?
 
-## Agent pointers
-
-| Agent | Detailed profile |
-|-------|------------------|
-| Class 1 | `class_1_anomaly_detection/notes/eda_profile_onsite_2026-06-18.md` |
-| Class 2 | `class_2_supply_forecast/notes/eda_profile_onsite_2026-06-18.md` |
-| Class 3 | `class_3_impact_evaluation/notes/eda_profile_onsite_2026-06-18.md` |
+Former per-class onsite EDA notes lived under `class_*/notes/` and are
+recoverable from Git history only.

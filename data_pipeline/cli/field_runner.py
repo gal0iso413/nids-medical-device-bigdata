@@ -27,6 +27,10 @@ from data_pipeline.checkpoints.supply_monthly import (
     SEALED_MANIFEST_FILENAME,
 )
 from data_pipeline.ingest import create_source_lineage
+from data_pipeline.ingest.nids_supply_excel import (
+    SupplyWorkbookNameError,
+    group_closed_supply_months,
+)
 from data_pipeline.orchestration import run_supply_monthly_orchestration
 from data_pipeline.orchestration.supply_monthly import COMPLETE_MANIFEST_FILENAME
 from data_pipeline.storage import (
@@ -363,8 +367,8 @@ def _master_source_hash(config: FieldRunConfig, *, build: bool) -> str:
     return config.master_source_hash
 
 
-def _runtime_identity(config: FieldRunConfig) -> tuple[str, str]:
-    supply_lineage = create_source_lineage(config.supply_workbooks)
+def _runtime_identity(config: FieldRunConfig, supply_paths: Sequence[Path] | None = None) -> tuple[str, str]:
+    supply_lineage = create_source_lineage(tuple(supply_paths) if supply_paths is not None else config.supply_workbooks)
     source_hash = _master_source_hash(config, build=False)
     master = verify_master_product_lookup(config.master_lookup_root, source_hash)
     return derive_supply_monthly_run_id(supply_lineage, master), source_hash
@@ -379,28 +383,63 @@ def _run_dir(config: FieldRunConfig, run_id: str) -> Path:
     )
 
 
+def _rejected_payload(grouping) -> list[dict[str, Any]]:
+    return [
+        {
+            "month": item.month,
+            "path_count": item.path_count,
+            "logical_names": list(item.logical_names),
+            "reason": item.reason,
+        }
+        for item in grouping.rejected
+    ]
+
+
 def run_pipeline(config: FieldRunConfig) -> dict[str, Any]:
     report = run_preflight(config)
     if not report.ok:
         raise FieldRunnerPreflightError(report)
+    try:
+        grouping = group_closed_supply_months(config.supply_workbooks)
+    except SupplyWorkbookNameError as exc:
+        raise FieldRunConfigError(str(exc)) from exc
+    if not grouping.closed:
+        raise FieldRunnerMonthError(
+            "no closed supply month has exactly three dekade files",
+            rejected=_rejected_payload(grouping),
+        )
     source_hash = _master_source_hash(config, build=True)
-    result = run_supply_monthly_orchestration(
-        supply_paths=config.supply_workbooks,
-        master_lookup_root=config.master_lookup_root,
-        master_source_hash=source_hash,
-        checkpoint_root=config.checkpoint_root,
-        output_root=config.output_root,
-        max_month_fact_bytes=config.max_month_fact_bytes,
-        batch_size=config.batch_size,
-    )
+    month_results: list[dict[str, Any]] = []
+    any_written = False
+    for closed in grouping.closed:
+        result = run_supply_monthly_orchestration(
+            supply_paths=closed.paths,
+            master_lookup_root=config.master_lookup_root,
+            master_source_hash=source_hash,
+            checkpoint_root=config.checkpoint_root,
+            output_root=config.output_root,
+            max_month_fact_bytes=config.max_month_fact_bytes,
+            batch_size=config.batch_size,
+        )
+        any_written = any_written or result.status == "completed"
+        month_results.append(
+            {
+                "month": closed.month,
+                "status": result.status,
+                "run_id": result.run_id,
+                "written_months": list(result.written_months),
+                "unchanged_months": list(result.unchanged_months),
+                "skipped_unmatched_only_months": list(result.skipped_unmatched_only_months),
+                "relative_complete_manifest_path": result.relative_complete_manifest_path,
+            }
+        )
     return {
         "command": "run",
-        "status": result.status,
-        "run_id": result.run_id,
-        "written_months": list(result.written_months),
-        "unchanged_months": list(result.unchanged_months),
-        "skipped_unmatched_only_months": list(result.skipped_unmatched_only_months),
-        "relative_complete_manifest_path": result.relative_complete_manifest_path,
+        "status": "completed" if any_written else "unchanged",
+        "rejected_months": _rejected_payload(grouping),
+        "months": month_results,
+        "written_months": [month for item in month_results for month in item["written_months"]],
+        "unchanged_months": [month for item in month_results for month in item["unchanged_months"]],
     }
 
 
@@ -417,51 +456,85 @@ def read_status(config: FieldRunConfig) -> dict[str, Any]:
             "state": "master_lookup_missing",
             "verified": False,
         }
-    run_id, _ = _runtime_identity(config)
-    run_dir = _run_dir(config, run_id)
-    if run_dir.joinpath(COMPLETE_MANIFEST_FILENAME).is_file():
-        state = "complete_unverified"
-    elif run_dir.joinpath(SEALED_MANIFEST_FILENAME).is_file():
-        state = "sealed_unpublished_or_incomplete"
-    elif run_dir.joinpath(CHECKPOINT_DATABASE_FILENAME).is_file() and run_dir.joinpath(RUN_MANIFEST_FILENAME).is_file():
-        state = "active"
-    elif run_dir.exists():
-        state = "incomplete_artifact"
-    else:
-        state = "not_started"
-    return {"command": "status", "run_id": run_id, "state": state, "verified": False}
+    grouping = group_closed_supply_months(config.supply_workbooks)
+    month_states: list[dict[str, Any]] = []
+    for closed in grouping.closed:
+        run_id, _ = _runtime_identity(config, closed.paths)
+        run_dir = _run_dir(config, run_id)
+        if run_dir.joinpath(COMPLETE_MANIFEST_FILENAME).is_file():
+            state = "complete_unverified"
+        elif run_dir.joinpath(SEALED_MANIFEST_FILENAME).is_file():
+            state = "sealed_unpublished_or_incomplete"
+        elif run_dir.joinpath(CHECKPOINT_DATABASE_FILENAME).is_file() and run_dir.joinpath(RUN_MANIFEST_FILENAME).is_file():
+            state = "active"
+        elif run_dir.exists():
+            state = "incomplete_artifact"
+        else:
+            state = "not_started"
+        month_states.append({"month": closed.month, "run_id": run_id, "state": state})
+    primary = month_states[0] if month_states else {"run_id": None, "state": "no_closed_month"}
+    return {
+        "command": "status",
+        "run_id": primary["run_id"],
+        "state": primary["state"],
+        "verified": False,
+        "rejected_months": _rejected_payload(grouping),
+        "months": month_states,
+    }
 
 
 def verify_completed_run(config: FieldRunConfig) -> dict[str, Any]:
-    run_id, source_hash = _runtime_identity(config)
-    run_dir = _run_dir(config, run_id)
-    if not run_dir.joinpath(COMPLETE_MANIFEST_FILENAME).is_file():
-        raise FieldRunVerificationError("The complete manifest is not present")
-    if not run_dir.joinpath(SEALED_MANIFEST_FILENAME).is_file():
-        raise FieldRunVerificationError("The sealed checkpoint manifest is not present")
-    sealed = verify_sealed_supply_checkpoint(config.checkpoint_root, run_id)
-    # In a complete, verified-sealed state the existing orchestration follows its
-    # read/verify-only path and must return unchanged.
-    result = run_supply_monthly_orchestration(
-        supply_paths=config.supply_workbooks,
-        master_lookup_root=config.master_lookup_root,
-        master_source_hash=source_hash,
-        checkpoint_root=config.checkpoint_root,
-        output_root=config.output_root,
-        max_month_fact_bytes=config.max_month_fact_bytes,
-        batch_size=config.batch_size,
-    )
-    if result.status != "unchanged":
-        raise FieldRunVerificationError("Verification unexpectedly changed run state")
+    grouping = group_closed_supply_months(config.supply_workbooks)
+    if grouping.rejected:
+        raise FieldRunVerificationError("incomplete dekade months are present")
+    if not grouping.closed:
+        raise FieldRunVerificationError("no closed supply month has exactly three dekade files")
+    source_hash = _master_source_hash(config, build=False)
+    verified: list[dict[str, Any]] = []
+    for closed in grouping.closed:
+        run_id, _ = _runtime_identity(config, closed.paths)
+        run_dir = _run_dir(config, run_id)
+        if not run_dir.joinpath(COMPLETE_MANIFEST_FILENAME).is_file():
+            raise FieldRunVerificationError("The complete manifest is not present")
+        if not run_dir.joinpath(SEALED_MANIFEST_FILENAME).is_file():
+            raise FieldRunVerificationError("The sealed checkpoint manifest is not present")
+        sealed = verify_sealed_supply_checkpoint(config.checkpoint_root, run_id)
+        result = run_supply_monthly_orchestration(
+            supply_paths=closed.paths,
+            master_lookup_root=config.master_lookup_root,
+            master_source_hash=source_hash,
+            checkpoint_root=config.checkpoint_root,
+            output_root=config.output_root,
+            max_month_fact_bytes=config.max_month_fact_bytes,
+            batch_size=config.batch_size,
+        )
+        if result.status != "unchanged":
+            raise FieldRunVerificationError("Verification unexpectedly changed run state")
+        verified.append(
+            {
+                "month": closed.month,
+                "run_id": run_id,
+                "months": list(sealed.months),
+                "ledger_rows": sealed.ledger_rows,
+                "matched_rows": sealed.matched_rows,
+                "unmatched_rows": sealed.unmatched_rows,
+            }
+        )
     return {
         "command": "verify",
         "status": "verified",
-        "run_id": run_id,
-        "months": list(sealed.months),
-        "ledger_rows": sealed.ledger_rows,
-        "matched_rows": sealed.matched_rows,
-        "unmatched_rows": sealed.unmatched_rows,
+        "months": verified,
+        "run_id": verified[0]["run_id"],
+        "ledger_rows": verified[0]["ledger_rows"],
+        "matched_rows": verified[0]["matched_rows"],
+        "unmatched_rows": verified[0]["unmatched_rows"],
     }
+
+
+class FieldRunnerMonthError(RuntimeError):
+    def __init__(self, message: str, *, rejected: list[dict[str, Any]]) -> None:
+        super().__init__(message)
+        self.rejected = rejected
 
 
 class FieldRunnerPreflightError(RuntimeError):
@@ -551,14 +624,25 @@ def main(
     except FieldRunnerPreflightError as exc:
         _write_json(stderr, exc.report.payload())
         return EXIT_PREFLIGHT
-    except Exception as exc:
+    except FieldRunnerMonthError as exc:
         _write_json(
             stderr,
             {
                 "error": type(exc).__name__,
-                "message": _safe_error_message(exc, config),
-                "hint": "Keep existing artifacts unchanged, correct the reported cause, and rerun with the same config.",
+                "message": str(exc),
+                "rejected_months": exc.rejected,
                 "stage": args.command,
             },
         )
+        return EXIT_RUN
+    except Exception as exc:
+        payload = {
+            "error": type(exc).__name__,
+            "message": _safe_error_message(exc, config),
+            "hint": "Keep existing artifacts unchanged, correct the reported cause, and rerun with the same config.",
+            "stage": args.command,
+        }
+        if exc.__cause__ is not None:
+            payload["cause"] = _safe_error_message(exc.__cause__, config)
+        _write_json(stderr, payload)
         return EXIT_VERIFY if args.command == "verify" else EXIT_RUN

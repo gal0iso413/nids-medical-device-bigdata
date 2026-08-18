@@ -6,7 +6,8 @@ not join the master, aggregate monthly facts, or publish Parquet partitions.
 
 from __future__ import annotations
 
-from collections import Counter
+from calendar import monthrange
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -122,6 +123,9 @@ BARCODE_SUSPECT_THRESHOLD: Final = Decimal("1e12")
 _DECIMAL_PATTERN: Final = re.compile(
     r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$"
 )
+SUPPLY_WORKBOOK_RANGE_PATTERN: Final = re.compile(
+    r"^공급내역보고자료\((\d{8})~(\d{8})\)\.xlsx$"
+)
 
 
 class NidsSupplyExcelError(RuntimeError):
@@ -138,6 +142,109 @@ class DataSheetSchemaError(DataSheetDiscoveryError):
 
 class SourceSnapshotError(NidsSupplyExcelError):
     """Raised when source workbooks cannot form a deterministic snapshot."""
+
+
+class SupplyWorkbookNameError(NidsSupplyExcelError):
+    """Raised when a supply workbook name is not a closed dekade filename."""
+
+
+@dataclass(frozen=True)
+class SupplyWorkbookDateRange:
+    month: str
+    start: date
+    end: date
+
+
+@dataclass(frozen=True)
+class ClosedSupplyMonth:
+    month: str
+    paths: tuple[Path, Path, Path]
+
+
+@dataclass(frozen=True)
+class RejectedSupplyMonth:
+    month: str
+    path_count: int
+    logical_names: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class SupplyMonthGrouping:
+    closed: tuple[ClosedSupplyMonth, ...]
+    rejected: tuple[RejectedSupplyMonth, ...]
+
+
+def _parse_yyyymmdd(value: str, *, field: str) -> date:
+    """Parse a calendar day with datetime so leap years are not hard-coded."""
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise SupplyWorkbookNameError(f"{field} is not a valid calendar day") from exc
+    if parsed.strftime("%Y%m%d") != value:
+        raise SupplyWorkbookNameError(f"{field} is not a valid calendar day")
+    return parsed
+
+
+def parse_supply_workbook_date_range(logical_name: str) -> SupplyWorkbookDateRange:
+    """Read month membership from 공급내역보고자료(YYYYMMDD~YYYYMMDD).xlsx."""
+    if not isinstance(logical_name, str) or not logical_name:
+        raise SupplyWorkbookNameError("supply workbook logical name is required")
+    match = SUPPLY_WORKBOOK_RANGE_PATTERN.fullmatch(logical_name)
+    if match is None:
+        raise SupplyWorkbookNameError(
+            "supply workbook name must match 공급내역보고자료(YYYYMMDD~YYYYMMDD).xlsx"
+        )
+    start = _parse_yyyymmdd(match.group(1), field="range start")
+    end = _parse_yyyymmdd(match.group(2), field="range end")
+    if start.year != end.year or start.month != end.month:
+        raise SupplyWorkbookNameError("supply workbook range must stay in one calendar month")
+    if start > end:
+        raise SupplyWorkbookNameError("supply workbook range start must not follow its end")
+    last_day = date(start.year, start.month, monthrange(start.year, start.month)[1])
+    if end > last_day:
+        raise SupplyWorkbookNameError("supply workbook range end is past the calendar month")
+    return SupplyWorkbookDateRange(start.strftime("%Y%m"), start, end)
+
+
+def declared_month_from_logical_names(logical_names: Sequence[str]) -> str:
+    """Return the single calendar month declared by dekade filenames."""
+    if not logical_names:
+        raise SupplyWorkbookNameError("at least one supply workbook name is required")
+    months = tuple(parse_supply_workbook_date_range(name).month for name in logical_names)
+    unique = tuple(sorted(set(months)))
+    if len(unique) != 1:
+        raise SupplyWorkbookNameError("supply workbooks must declare exactly one calendar month")
+    return unique[0]
+
+
+def group_closed_supply_months(paths: Sequence[Path]) -> SupplyMonthGrouping:
+    """Group dekade files by month; exactly three files close a month."""
+    if not paths:
+        raise SupplyWorkbookNameError("at least one supply workbook path is required")
+    by_month: dict[str, list[Path]] = defaultdict(list)
+    for path in paths:
+        if not isinstance(path, Path):
+            raise TypeError("supply workbook paths must be pathlib.Path values")
+        month = parse_supply_workbook_date_range(path.name).month
+        by_month[month].append(path)
+    closed: list[ClosedSupplyMonth] = []
+    rejected: list[RejectedSupplyMonth] = []
+    for month in sorted(by_month):
+        month_paths = tuple(sorted(by_month[month], key=lambda item: item.name))
+        names = tuple(path.name for path in month_paths)
+        if len(month_paths) == 3:
+            closed.append(ClosedSupplyMonth(month, (month_paths[0], month_paths[1], month_paths[2])))
+            continue
+        rejected.append(
+            RejectedSupplyMonth(
+                month=month,
+                path_count=len(month_paths),
+                logical_names=names,
+                reason="expected_exactly_three_files",
+            )
+        )
+    return SupplyMonthGrouping(tuple(closed), tuple(rejected))
 
 
 @dataclass(frozen=True)

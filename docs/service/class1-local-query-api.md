@@ -28,23 +28,35 @@ by Korean company name through the bounded catalog.
 
 ## Contract
 
-- `GET /healthz` reports `local_internal_only` and the verified index fingerprint.
-- `GET /v1/status` reports the anchor, window, entity/edge counts,
+- `GET /healthz` reports `local_internal_only` and the verified catalog fingerprint.
+- `GET /v1/status` reports `available_anchor_months`, `default_anchor_month`
+  (latest completed), the default anchor's window and entity/edge counts,
   `trains_on_request=false`, and the fixed review-queue role/limit.
-- `GET /v1/review-queue` returns the completed-anchor top 10 **distributor**
+- Lookup endpoints accept `?anchor_month=YYYYMM`. Omitting the query uses the
+  latest completed partition. A missing, future, or malformed month is **422**.
+  A month that exists but does not contain the entity is **404**.
+- `GET /v1/review-queue` returns that anchor's top 10 **distributor**
   entities by GAD-NR role-group percentile. The role group is `distributor`
   only, including supply `업종` `판매(임대)업`. Ranked rows never include
   `raw_score`. Firms below the role-group sample minimum are omitted rather
   than shown as a ranked review target.
 - `GET /v1/catalog/entities?q=&limit=` returns a bounded Korean display-name
-  catalog (default 20, max 50). Duplicate names return multiple hits with role
+  catalog for that anchor (default 20, max 50). Duplicate names return multiple hits with role
   and region. A missing name is omitted from name match rather than invented.
 - `GET /v1/entities/{entity_id}` returns that entity's service allow-list row.
 - `GET /v1/entities/{entity_id}/relationships` returns the UI 1-hop graph,
   including `display_name` on each node when the name directory was joined.
 
-There is no unbounded `?query=` search, no global 2-hop, and no raw GAD-NR
-score. A missing ID is 404. The service never opens Excel, monthly facts, or
+The index is schema `1.2.0`:
+
+```text
+{output_root}/class1_lookup_index/schema_version=1.2.0/
+  _catalog.json
+  anchor_month=YYYYMM/
+```
+
+Only the requested month's partition is loaded into memory. There is no unbounded `?query=` search, no global 2-hop, and no raw GAD-NR
+score. The service never opens Excel, monthly facts, or
 `restricted-qa.json`. Display names come from the ingest side-channel documented
 in [`company-display-name.md`](../data/company-display-name.md).
 

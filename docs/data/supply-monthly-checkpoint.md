@@ -43,7 +43,8 @@ PR-03B1's bounded unmatched sample is diagnostic only; it cannot classify the
 full batch. Every emitted normal row enters the ledger as `matched` or
 `unmatched`, and only matched rows enter the accumulator. Rows rejected by the
 adapter are represented only by the verified final `SupplyIngestionReport` at
-EOF.
+EOF. The published `month` key is the dekade filename calendar month, not a
+re-bin of `supply_date`. One checkpoint run is one closed month.
 
 ## Physical layout
 

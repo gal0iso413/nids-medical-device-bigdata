@@ -15,7 +15,10 @@ from .nids_supply_excel import (
     SupplyIngestionReport,
     WorkbookSnapshot,
     create_source_lineage,
+    declared_month_from_logical_names,
     discover_supply_sheets,
+    group_closed_supply_months,
+    parse_supply_workbook_date_range,
     stream_nids_supply_excel,
 )
 
@@ -34,6 +37,9 @@ __all__ = [
     "SupplyIngestionReport",
     "WorkbookSnapshot",
     "create_source_lineage",
+    "declared_month_from_logical_names",
     "discover_supply_sheets",
+    "group_closed_supply_months",
+    "parse_supply_workbook_date_range",
     "stream_nids_supply_excel",
 ]

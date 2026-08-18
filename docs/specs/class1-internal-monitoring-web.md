@@ -2,7 +2,7 @@
 
 > 상태: 구현 가능한 제품 명세
 > 사용자: 승인된 NIDS 내부 검토자
-> 전제: [GAD-NR 특징 계약](../decisions/class1-gadnr-feature-contract.md)과 [목표 웹 아키텍처](../architecture/target-web-architecture.md)를 따른다.
+> 전제: [GAD-NR 특징 계약](../decisions/class1-gadnr-feature-contract.md)을 따른다.
 
 ## 제품 목적
 

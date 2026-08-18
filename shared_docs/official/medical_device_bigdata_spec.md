@@ -9,25 +9,24 @@
 
 Provides **program-level** context for the NIDS medical-device distribution big-data optimization initiative: legal mandates, deliverables, data-entity taxonomy, contract timeline, and phased UDI/supply reporting rules. Use for strategic alignment when PM directs; pair with field dictionaries for column-level work.
 
-## Relationship to agent work and data
+## Relationship to current product and data
 
 | Layer | Location | Role |
 |-------|----------|------|
 | Program scope & deliverables | This file | Mission, tasks, milestones, regulatory phase-in |
 | Column semantics | `description_*` in this folder | Master and supply field definitions |
-| Agent execution rules | `shared_docs/structured/class_*_spec.md` | Per-agent scope (supreme for that agent on conflict) |
-| Sample/prod files | `shared_data/` | Runtime inputs — profile dynamically per `DATA_LAYER.md` |
+| Current product contracts | `docs/decisions/`, `docs/specs/` | Class 1 GAD-NR and Class 2 comparison implementation |
+| Runtime ingest | `data_pipeline/` | Configured master and supply workbooks |
 
-## Agent usage
+## Product usage
 
-| Agent | When to consult |
+| Product | When to consult |
 |-------|-----------------|
-| All (when PM directs) | Contract phases, deliverable names, 300M+ transaction scale, MFDS federation scope |
+| All | Contract phases, deliverable names, 300M+ transaction scale, MFDS federation scope |
 | Class 1 — Anomaly | §2.3 anomalous distribution model; implantable / class reporting windows |
-| Class 2 — Forecast | §2.3 supply disruption model; supply reporting milestone dates |
-| Class 3 — Impact | §2.3 policy support model; public/regulator/industry channel mapping |
+| Class 2 — Comparison | §2.3 policy support model; public/regulator/industry channel mapping |
 
-**Hierarchy of truth:** `shared_data/DATA_LAYER.md` for ingestion; structured agent specs govern analytical implementation; this file is **immutable stakeholder reference** for program intent and architecture labels (`UDI_MASTER_01`, `TX_METRICS_04`, etc.).
+**Hierarchy of truth:** `docs/data/`, `docs/decisions/`, and `docs/specs/` govern current implementation. This file is **immutable stakeholder reference** for program intent and architecture labels (`UDI_MASTER_01`, `TX_METRICS_04`, etc.).
 
 ## Stakeholder metadata
 

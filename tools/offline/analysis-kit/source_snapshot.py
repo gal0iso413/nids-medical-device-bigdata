@@ -12,7 +12,7 @@ ALLOWED_UNTRACKED = (
     "docs/data/offline-analysis-python-environment.md",
     "docs/data/class1-graph-scale-gate.md",
     "docs/data/company-display-name.md",
-    "docs/service/class3-local-integrated-host.md",
+    "docs/service/class2-local-integrated-host.md",
     "docs/service/class1-local-query-api.md",
     "docs/service/class1-local-integrated-host.md",
     "services/class1_local_api/",
@@ -22,7 +22,7 @@ ALLOWED_UNTRACKED = (
     "tests/ingest/",
     "tests/observability/",
 )
-TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "services/class1_local_api/", "services/class3_local_api/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "docs/service/", "requirements-data-pipeline.txt", "README.md")
+TRACKED_ROOTS = ("data_pipeline/", "class_1_anomaly_detection/", "services/class1_local_api/", "services/class2_local_api/", "tools/offline/analysis-kit/", "config/", "tests/", "docs/data/", "docs/service/", "requirements-data-pipeline.txt", "README.md")
 FORBIDDEN_SUFFIXES = {".xlsx", ".xls", ".xlsm", ".parquet", ".sqlite", ".whl", ".zip", ".exe"}
 FORBIDDEN_PARTS = {".git", "node_modules", "dist", "generated", "checkpoint", "checkpoints", "output", "__pycache__"}
 

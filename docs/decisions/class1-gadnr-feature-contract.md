@@ -128,7 +128,7 @@
 
 ### HHI와 PDI
 
-- **Locked decision** — HHI는 Class 1 핵심 네트워크 지표에서 후순위화한다. 시장 단위가 명확한 Class 3 품목별 보조지표에서만 우선 검토한다.
+- **Locked decision** — HHI는 Class 1 핵심 네트워크 지표에서 후순위화한다. 시장 단위가 명확한 Class 2 품목별 보조지표에서만 우선 검토한다.
 - **Locked decision** — PDI는 의료기관 끝단 누락으로 경로가 잘릴 수 있으므로 Class 1 상세 보조지표로 둔다.
 - **Locked decision** — `최종 경로`라는 표현을 금지하고 `관측된 경로`와 endpoint coverage를 함께 표시한다.
 

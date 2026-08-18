@@ -119,7 +119,7 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = Path(tempfile.gettempdir()) / f".supply-orchestration-{uuid4().hex[:10]}"
         self.temp_dir.mkdir(parents=True)
-        self.supply = self.temp_dir / "synthetic-supply.xlsx"
+        self.supply = self.temp_dir / "공급내역보고자료(20260101~20260110).xlsx"
         self.master = self.temp_dir / "synthetic-master.xlsx"
         self.master_root = self.temp_dir / "master-lookup"
         self.checkpoint_root = self.temp_dir / "checkpoint"
@@ -137,9 +137,9 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
     def write_supply(self, rows: list[list[object]]) -> None:
         write_workbook(self.supply, [("data", [SUPPLY_HEADERS, *rows])])
 
-    def run_pipeline(self, *, batch_size: int = 2):
+    def run_pipeline(self, *, batch_size: int = 2, supply_path: Path | None = None):
         return run_supply_monthly_orchestration(
-            supply_paths=[self.supply],
+            supply_paths=[supply_path or self.supply],
             master_lookup_root=self.master_root,
             master_source_hash=self.master_source_hash,
             checkpoint_root=self.checkpoint_root,
@@ -153,13 +153,12 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
             *Path(result.relative_complete_manifest_path).parts
         )
 
-    def test_end_to_end_exact_keys_two_months_and_unmatched_only_month(self) -> None:
+    def test_end_to_end_exact_keys_and_unmatched_rows_stay_in_declared_month(self) -> None:
         self.write_supply(
             [
                 supply_row(1, month="202601", item=1, model=2, udi_serial=3),
                 # Same UDI serial, different other two keys: exact join must not match.
-                supply_row(2, month="202603", item=9, model=8, udi_serial=3),
-                supply_row(3, month="202602", item=4, model=5, udi_serial=6),
+                supply_row(2, month="202601", item=9, model=8, udi_serial=3),
             ]
         )
         result = self.run_pipeline(batch_size=2)
@@ -173,18 +172,11 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
             ),
         )
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.written_months, ("202601", "202602"))
-        self.assertEqual(result.skipped_unmatched_only_months, ("202603",))
+        self.assertEqual(result.written_months, ("202601",))
+        self.assertEqual(result.skipped_unmatched_only_months, ())
         fact = read_monthly_fact_partitions(self.output_root)
-        self.assertEqual(fact["month"].tolist(), ["202601", "202602"])
-        self.assertEqual(fact["tx_count"].tolist(), [1, 1])
-        self.assertFalse(
-            self.output_root.joinpath(
-                "fact_company_counterparty_product_month",
-                "schema_version=1.0.0",
-                "month=202603",
-            ).exists()
-        )
+        self.assertEqual(fact["month"].tolist(), ["202601"])
+        self.assertEqual(fact["tx_count"].tolist(), [1])
         raw_manifest = self.complete_path(result).read_bytes()
         manifest = json.loads(raw_manifest.decode("utf-8"))
         self.assertEqual(
@@ -207,14 +199,29 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
         manifest["complete_payload_fingerprint"] = fingerprint
         self.assertEqual(
             [entry["month"] for entry in manifest["published_months"]],
-            ["202601", "202602"],
+            ["202601"],
         )
-        self.assertEqual(manifest["skipped_unmatched_only_months"], ["202603"])
         self.assertNotIn(str(self.temp_dir), self.complete_path(result).read_text(encoding="utf-8"))
         loaded = read_company_display_name_directory(self.output_root)
         self.assertIsNotNone(loaded)
         _manifest, names = loaded
         self.assertEqual(set(names["display_name"]), {"합성공급사", "합성수령사"})
+
+    def test_later_month_run_does_not_reprocess_published_january(self) -> None:
+        self.write_supply(
+            [supply_row(1, month="202601", item=1, model=2, udi_serial=3)]
+        )
+        january = self.run_pipeline()
+        february = self.temp_dir / "공급내역보고자료(20260201~20260210).xlsx"
+        write_workbook(
+            february,
+            [("data", [SUPPLY_HEADERS, supply_row(3, month="202602", item=4, model=5, udi_serial=6)])],
+        )
+        second = self.run_pipeline(supply_path=february)
+        self.assertNotEqual(january.run_id, second.run_id)
+        self.assertEqual(second.written_months, ("202602",))
+        fact = read_monthly_fact_partitions(self.output_root)
+        self.assertEqual(sorted(fact["month"].tolist()), ["202601", "202602"])
 
     def test_batches_are_range_indexed_and_mask_matches_join_report(self) -> None:
         self.write_supply(
@@ -257,25 +264,27 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
                 self.run_pipeline(batch_size=1)
         self.assertFalse(self.output_root.exists())
         recovered = self.run_pipeline(batch_size=2)
-        self.assertEqual(recovered.written_months, ("202601", "202602"))
+        self.assertEqual(recovered.written_months, ("202601",))
 
     def test_pre_eof_error_never_calls_parquet_writer(self) -> None:
         self.write_supply(
             [
                 supply_row(1, month="202601", item=1, model=2, udi_serial=3),
-                supply_row(
-                    2,
-                    month="202602",
-                    item=4,
-                    model=5,
-                    udi_serial=6,
-                    transaction_type="반품",
-                ),
+                supply_row(2, month="202601", item=4, model=5, udi_serial=6),
             ]
         )
-        with patch.object(orchestration, "write_monthly_fact_partitions") as writer:
-            with self.assertRaises(Exception):
-                self.run_pipeline(batch_size=1)
+        original = SupplyMonthlyCheckpoint.apply_classified_batch
+        calls = {"count": 0}
+
+        def fail_second(checkpoint, batch: pd.DataFrame, *, matched_mask):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise RuntimeError("synthetic pre-eof failure")
+            return original(checkpoint, batch, matched_mask=matched_mask)
+        with patch.object(SupplyMonthlyCheckpoint, "apply_classified_batch", new=fail_second):
+            with patch.object(orchestration, "write_monthly_fact_partitions") as writer:
+                with self.assertRaisesRegex(RuntimeError, "synthetic pre-eof failure"):
+                    self.run_pipeline(batch_size=1)
         writer.assert_not_called()
 
     def test_eof_accounting_failure_never_calls_parquet_writer(self) -> None:
@@ -347,10 +356,13 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
 
     def test_later_partition_failure_preserves_first_and_rerun_resumes(self) -> None:
         self.write_supply(
-            [
-                supply_row(1, month="202601", item=1, model=2, udi_serial=3),
-                supply_row(2, month="202602", item=4, model=5, udi_serial=6),
-            ]
+            [supply_row(1, month="202601", item=1, model=2, udi_serial=3)]
+        )
+        self.run_pipeline()
+        february = self.temp_dir / "공급내역보고자료(20260201~20260210).xlsx"
+        write_workbook(
+            february,
+            [("data", [SUPPLY_HEADERS, supply_row(2, month="202602", item=4, model=5, udi_serial=6)])],
         )
         original = orchestration.write_monthly_fact_partitions
 
@@ -363,14 +375,17 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
             orchestration, "write_monthly_fact_partitions", side_effect=fail_february
         ):
             with self.assertRaisesRegex(RuntimeError, "synthetic publication failure"):
-                self.run_pipeline()
+                self.run_pipeline(supply_path=february)
         january = self.output_root / "fact_company_counterparty_product_month" / "schema_version=1.0.0" / "month=202601"
         self.assertTrue(january.is_dir())
-        complete_files = list(self.checkpoint_root.rglob("_complete_manifest.json"))
-        self.assertEqual(complete_files, [])
-        resumed = self.run_pipeline()
-        self.assertEqual(resumed.unchanged_months, ("202601",))
+        february_complete = [
+            path for path in self.checkpoint_root.rglob("_complete_manifest.json")
+            if "202602" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(february_complete, [])
+        resumed = self.run_pipeline(supply_path=february)
         self.assertEqual(resumed.written_months, ("202602",))
+        self.assertEqual(resumed.unchanged_months, ())
 
     def test_complete_manifest_write_failure_retries_without_republishing(self) -> None:
         self.write_supply(
@@ -390,22 +405,19 @@ class SupplyMonthlyOrchestrationTests(unittest.TestCase):
 
     def test_partition_verification_failure_blocks_complete_manifest(self) -> None:
         self.write_supply(
-            [
-                supply_row(1, month="202601", item=1, model=2, udi_serial=3),
-                supply_row(2, month="202602", item=4, model=5, udi_serial=6),
-            ]
+            [supply_row(1, month="202601", item=1, model=2, udi_serial=3)]
         )
         original = orchestration.verify_monthly_fact_partition
 
-        def fail_february(output_root, month):
-            if month == "202602":
+        def fail_january(output_root, month):
+            if month == "202601":
                 raise PartitionIntegrityError("synthetic verify failure")
             return original(output_root, month)
 
         with patch.object(
             orchestration,
             "verify_monthly_fact_partition",
-            side_effect=fail_february,
+            side_effect=fail_january,
         ):
             with self.assertRaisesRegex(PartitionIntegrityError, "synthetic"):
                 self.run_pipeline()

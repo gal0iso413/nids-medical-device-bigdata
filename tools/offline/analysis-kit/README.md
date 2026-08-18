@@ -7,7 +7,7 @@ analysis, and localhost serving action in the resulting kit is offline.
 
 The runtime is CPython 3.13.12 Windows x64 and its single hash-locked
 wheelhouse. `run-analysis.ps1` only delegates to the existing field runner,
-Class 3 exporter, and Class 1 anchor runner. It contains no pipeline or model
+Class 2 exporter, and Class 1 anchor runner. It contains no pipeline or model
 implementation.
 
 Both screens are internal localhost applications, not a public service.
@@ -17,12 +17,12 @@ After offline install:
    names are captured in that same Excel ingest pass.
 2. Optionally measure the Class 1 training graph with
    `run-class1-graph-scale-gate.ps1`.
-3. Run GAD-NR (`run-analysis.ps1 class1-run`).
-4. Build the Class 1 lookup index with `build-class1-lookup-index.ps1`.
-5. Build verified Class 3 serving marts with `build-class3-serving-marts.ps1`.
+3. Run GAD-NR for each of the latest six completed anchors (`run-analysis.ps1 class1-run` once per anchor config).
+4. Build the Class 1 lookup index with `build-class1-lookup-index.ps1` once per those six anchors. The index is schema `1.2.0` with `_catalog.json` and `anchor_month=` partitions.
+5. Build verified Class 2 serving marts with `build-class2-serving-marts.ps1`. Omit `-PeriodStart`/`-PeriodEnd` so the mart covers every verified fact month.
 6. Serve the same screens as the local checkout:
    - Class 1 lookup API + React at `127.0.0.1:8011` (`serve-class1-site.ps1`)
-   - Class 3 comparison API + React at `127.0.0.1:8013` (`serve-class3-site.ps1`)
+   - Class 2 comparison API + React at `127.0.0.1:8012` (`serve-class2-site.ps1`)
    - or both with `serve-analysis-sites.ps1 -IndexRoot ... -MartRoot ...`
 
 Status remains `local_internal_only` and `public_release_policy=not_approved`.
@@ -41,13 +41,13 @@ $env:VITE_CLASS1_DATA_SOURCE = "api"
 npm ci
 npm run build
 
-cd ../class3_public
-$env:VITE_CLASS3_DATA_SOURCE = "api"
+cd ../class2_public
+$env:VITE_CLASS2_DATA_SOURCE = "api"
 npm ci
 npm run build
 ```
 
-Do not publish generated analysis JSON into `sites/class1` or `sites/class3`.
+Do not publish generated analysis JSON into `sites/class1` or `sites/class2`.
 The kit keeps those `generated/` directories empty. Lookup indexes and serving
 marts stay outside the static roots.
 
@@ -62,8 +62,8 @@ indexes, and marts outside the kit.
 .\run-class1-graph-scale-gate.ps1 -Config C:\secure\class1-graph-scale-gate.json -Report C:\secure\reports\class1-graph-scale-gate.json
 .\run-analysis.ps1 -Command class1-run -Config C:\secure\field-run.toml
 .\build-class1-lookup-index.ps1 -FactRoot D:\nids\monthly-fact -RunRoot C:\secure\class1-offline-anchor -OutputRoot C:\secure\class1-lookup-index -AnchorMonth 202403
-.\build-class3-serving-marts.ps1 -FieldRunConfig C:\secure\field-run.toml -FactRoot D:\nids\monthly-fact -OutputRoot C:\secure\class3-serving-marts -PeriodStart 202401 -PeriodEnd 202403
-.\serve-analysis-sites.ps1 -IndexRoot C:\secure\class1-lookup-index -MartRoot C:\secure\class3-serving-marts
+.\build-class2-serving-marts.ps1 -FieldRunConfig C:\secure\field-run.toml -FactRoot D:\nids\monthly-fact -OutputRoot C:\secure\class2-serving-marts
+.\serve-analysis-sites.ps1 -IndexRoot C:\secure\class1-lookup-index -MartRoot C:\secure\class2-serving-marts
 ```
 
 Excel, monthly facts, model scores, and site-specific configuration are not

@@ -24,9 +24,9 @@ from class_1_anomaly_detection.src.offline_anchor_runner import (
     SERVICE_FILENAME,
 )
 from data_pipeline.contracts.supply_monthly import FACT_SCHEMA_VERSION, MONTHLY_FACT_COLUMNS
-from data_pipeline.offline.class3_analysis_export import (
-    MANIFEST_FILENAME as CLASS3_MANIFEST_FILENAME,
-    PAYLOAD_FILENAME as CLASS3_PAYLOAD_FILENAME,
+from data_pipeline.offline.class2_analysis_export import (
+    MANIFEST_FILENAME as CLASS2_MANIFEST_FILENAME,
+    PAYLOAD_FILENAME as CLASS2_PAYLOAD_FILENAME,
 )
 from data_pipeline.storage.monthly_fact_parquet import DATASET_NAME, PARQUET_FILENAME
 
@@ -92,20 +92,20 @@ def inventory_monthly_fact(*, parquet_root: Path, months: Sequence[str] | None =
         connection.close(); return result
 
 
-def verify_class3_artifact(*, web_public_root: Path) -> dict[str, Any]:
+def verify_class2_artifact(*, web_public_root: Path) -> dict[str, Any]:
     directory = Path(web_public_root) / "generated"
-    payload_path, manifest_path = directory / CLASS3_PAYLOAD_FILENAME, directory / CLASS3_MANIFEST_FILENAME
+    payload_path, manifest_path = directory / CLASS2_PAYLOAD_FILENAME, directory / CLASS2_MANIFEST_FILENAME
     payload, manifest = _read_json(payload_path), _read_json(manifest_path)
     if sha256(payload_path.read_bytes()).hexdigest() != manifest.get("payload_sha256"):
-        raise LocalAnalysisToolError("Class 3 payload checksum disagrees with manifest")
+        raise LocalAnalysisToolError("Class 2 payload checksum disagrees with manifest")
     if payload.get("analysis_schema_version") != manifest.get("analysis_schema_version"):
-        raise LocalAnalysisToolError("Class 3 analysis schema version mismatch")
+        raise LocalAnalysisToolError("Class 2 analysis schema version mismatch")
     if payload.get("local_export", {}).get("publication_scope") != "local_only":
-        raise LocalAnalysisToolError("Class 3 artifact is not marked local_only")
+        raise LocalAnalysisToolError("Class 2 artifact is not marked local_only")
     for item in payload.get("selection_catalog", []):
         if item.get("selection_type") == "item_name" and not item.get("parent_item_group_selection_id"):
-            raise LocalAnalysisToolError("Class 3 item-name selection lacks parent scope")
-    return {"command": "verify-class3", "status": "verified", "local_only": True, "payload_sha256": manifest["payload_sha256"], "export_state": manifest.get("export_state")}
+            raise LocalAnalysisToolError("Class 2 item-name selection lacks parent scope")
+    return {"command": "verify-class2", "status": "verified", "local_only": True, "payload_sha256": manifest["payload_sha256"], "export_state": manifest.get("export_state")}
 
 
 def verify_class1_artifact(*, output_root: Path, anchor_month: str) -> dict[str, Any]:
@@ -209,14 +209,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only inventory and verification for local analysis artifacts.")
     commands = parser.add_subparsers(dest="command", required=True)
     inventory = commands.add_parser("inventory"); inventory.add_argument("--parquet-root", required=True, type=Path); inventory.add_argument("--month", action="append"); inventory.add_argument("--limit", type=int, default=20)
-    class3 = commands.add_parser("verify-class3"); class3.add_argument("--web-public-root", required=True, type=Path)
+    class2 = commands.add_parser("verify-class2"); class2.add_argument("--web-public-root", required=True, type=Path)
     class1 = commands.add_parser("verify-class1"); class1.add_argument("--output-root", required=True, type=Path); class1.add_argument("--anchor-month", required=True)
     web = commands.add_parser("verify-class1-web"); web.add_argument("--web-public-root", required=True, type=Path); web.add_argument("--anchor-month", required=True); web.add_argument("--selected-entity-id", required=True)
     publish = commands.add_parser("publish-class1-web"); publish.add_argument("--output-root", required=True, type=Path); publish.add_argument("--web-public-root", required=True, type=Path); publish.add_argument("--anchor-month", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "inventory": result = inventory_monthly_fact(parquet_root=args.parquet_root, months=args.month, limit=args.limit)
-        elif args.command == "verify-class3": result = verify_class3_artifact(web_public_root=args.web_public_root)
+        elif args.command == "verify-class2": result = verify_class2_artifact(web_public_root=args.web_public_root)
         elif args.command == "verify-class1": result = verify_class1_artifact(output_root=args.output_root, anchor_month=args.anchor_month)
         elif args.command == "verify-class1-web": result = verify_class1_web_artifact(web_public_root=args.web_public_root, anchor_month=args.anchor_month, selected_entity_id=args.selected_entity_id)
         else: result = publish_class1_web_artifact(output_root=args.output_root, web_public_root=args.web_public_root, anchor_month=args.anchor_month)

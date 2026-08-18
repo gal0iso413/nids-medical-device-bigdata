@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import secrets
 import shutil
 from typing import Any, Final, Literal
@@ -44,9 +45,11 @@ from data_pipeline.storage.monthly_fact_parquet import (
 )
 
 
-LOOKUP_INDEX_SCHEMA_VERSION: Final = "1.1.0"
+LOOKUP_INDEX_SCHEMA_VERSION: Final = "1.2.0"
 LOOKUP_INDEX_DATASET_NAME: Final = "class1_lookup_index"
 MANIFEST_FILENAME: Final = "_manifest.json"
+CATALOG_FILENAME: Final = "_catalog.json"
+_ANCHOR_DIR_PATTERN: Final = re.compile(r"^anchor_month=(\d{6})$")
 _INDEX_FILENAMES: Final[dict[str, str]] = {
     "entities": "entities.parquet",
     "nodes": "nodes.parquet",
@@ -107,8 +110,12 @@ def _validate_roots(fact_root: Path, run_root: Path, output_root: Path) -> None:
         raise Class1LookupIndexError("output_root must not overlap the offline-anchor run root")
 
 
-def _target_dir(output_root: Path) -> Path:
+def _schema_dir(output_root: Path) -> Path:
     return output_root / LOOKUP_INDEX_DATASET_NAME / f"schema_version={LOOKUP_INDEX_SCHEMA_VERSION}"
+
+
+def _partition_dir(output_root: Path, anchor_month: str) -> Path:
+    return _schema_dir(output_root) / f"anchor_month={anchor_month}"
 
 
 def _run_directory(run_root: Path, anchor_month: str) -> Path:
@@ -395,6 +402,73 @@ def _existing_matches(final_dir: Path, candidate: dict[str, Any]) -> bool:
     return True
 
 
+def _partition_catalog_entry(partition_dir: Path) -> dict[str, Any]:
+    path = partition_dir / MANIFEST_FILENAME
+    try:
+        raw = path.read_bytes()
+        manifest = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Class1LookupIndexError("lookup index partition manifest is unreadable") from exc
+    if not isinstance(manifest, dict) or raw != _canonical_json_bytes(manifest):
+        raise Class1LookupIndexError("lookup index partition manifest is not canonical")
+    summary = manifest.get("graph_summary")
+    if not isinstance(summary, dict) or "edge_count" not in summary:
+        raise Class1LookupIndexError("lookup index partition graph_summary is invalid")
+    window = manifest.get("window_months")
+    if not isinstance(window, list) or not all(isinstance(item, str) for item in window):
+        raise Class1LookupIndexError("lookup index partition window_months is invalid")
+    return {
+        "anchor_month": str(manifest["anchor_month"]),
+        "created_fingerprint": str(manifest["created_fingerprint"]),
+        "entity_count": int(manifest["entity_count"]),
+        "edge_count": int(summary["edge_count"]),
+        "window_months": list(window),
+    }
+
+
+def _catalog_payload(partitions: list[dict[str, Any]]) -> dict[str, Any]:
+    months = [str(item["anchor_month"]) for item in partitions]
+    fingerprint_input = {
+        "lookup_index_dataset_name": LOOKUP_INDEX_DATASET_NAME,
+        "lookup_index_schema_version": LOOKUP_INDEX_SCHEMA_VERSION,
+        "available_anchor_months": months,
+        "default_anchor_month": months[-1],
+        "partitions": partitions,
+        "scope": "local_internal_only",
+        "trains_on_request": False,
+    }
+    return {
+        **fingerprint_input,
+        "created_fingerprint": _fingerprint(fingerprint_input),
+    }
+
+
+def _refresh_catalog(schema_dir: Path) -> dict[str, Any]:
+    entries: list[dict[str, Any]] = []
+    if schema_dir.is_dir():
+        for child in sorted(schema_dir.iterdir(), key=lambda item: item.name):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            match = _ANCHOR_DIR_PATTERN.fullmatch(child.name)
+            if match is None:
+                continue
+            entry = _partition_catalog_entry(child)
+            if entry["anchor_month"] != match.group(1):
+                raise Class1LookupIndexError("lookup index partition directory does not match its manifest")
+            entries.append(entry)
+    if not entries:
+        raise Class1LookupIndexError("lookup index catalog requires at least one anchor partition")
+    catalog = _catalog_payload(entries)
+    encoded = _canonical_json_bytes(catalog)
+    dest = schema_dir / CATALOG_FILENAME
+    if dest.is_file() and dest.read_bytes() == encoded:
+        return catalog
+    tmp = schema_dir / f".{CATALOG_FILENAME}.tmp-{secrets.token_hex(8)}"
+    tmp.write_bytes(encoded)
+    tmp.replace(dest)
+    return catalog
+
+
 def build_class1_lookup_index(
     *,
     fact_root: Path,
@@ -418,7 +492,7 @@ def build_class1_lookup_index(
         fact=fact, service_results=service_results, run_manifest=run_manifest,
         display_names=display_names,
     )
-    final_dir = _target_dir(output_root)
+    final_dir = _partition_dir(output_root, str(run_manifest["anchor_month"]))
     staging = _new_staging_dir(final_dir)
     try:
         row_counts, hashes = _write_outputs(staging, entities, nodes, edges, names)
@@ -431,9 +505,11 @@ def build_class1_lookup_index(
         if final_dir.exists():
             if _existing_matches(final_dir, candidate):
                 shutil.rmtree(staging)
+                _refresh_catalog(_schema_dir(output_root))
                 return Class1LookupIndexResult("unchanged", final_dir, final_dir / MANIFEST_FILENAME, candidate["created_fingerprint"], row_counts)
             raise Class1LookupIndexConflictError("existing lookup index has different content; refusing overwrite")
         staging.replace(final_dir)
+        _refresh_catalog(_schema_dir(output_root))
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise

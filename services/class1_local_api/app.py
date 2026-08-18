@@ -10,10 +10,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from .reader import (
-    REVIEW_QUEUE_LIMIT,
-    REVIEW_QUEUE_ROLE_GROUP,
     IndexReader,
     LookupContractError,
+    LookupEntityNotFoundError,
+    LookupMonthUnavailableError,
 )
 
 
@@ -66,10 +66,11 @@ def _validate_static_root(static_root: Path, index_root: Path) -> Path:
 
 
 def _http_for_lookup(exc: LookupContractError) -> HTTPException:
-    message = str(exc)
-    if "not in the lookup index" in message:
-        return HTTPException(status_code=404, detail=message)
-    return HTTPException(status_code=422, detail=message)
+    if isinstance(exc, LookupMonthUnavailableError):
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, LookupEntityNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
 
 
 def create_app(index_root: Path) -> FastAPI:
@@ -93,49 +94,39 @@ def create_app(index_root: Path) -> FastAPI:
     def healthz() -> dict[str, str]:
         return {
             "status": "ok",
-            "index_fingerprint": reader.index.fingerprint,
+            "index_fingerprint": reader.lookup_catalog.fingerprint,
             "service_mode": "local_internal_only",
         }
 
     @app.get("/v1/status")
     def status() -> dict[str, object]:
-        return {
-            "service_mode": "local_internal_only",
-            "public_release_policy": "not_approved",
-            "anchor_month": reader.index.anchor_month,
-            "window_months": list(reader.index.window_months),
-            "entity_count": reader.index.entity_count,
-            "edge_count": reader.index.edge_count,
-            "index_fingerprint": reader.index.fingerprint,
-            "trains_on_request": False,
-            "review_queue": {
-                "role_group": REVIEW_QUEUE_ROLE_GROUP,
-                "limit": REVIEW_QUEUE_LIMIT,
-            },
-        }
+        return reader.status_payload()
 
     @app.get("/v1/review-queue")
-    def review_queue() -> dict[str, object]:
-        return reader.review_queue()
+    def review_queue(anchor_month: str | None = None) -> dict[str, object]:
+        try:
+            return reader.review_queue(anchor_month)
+        except LookupContractError as exc:
+            raise _http_for_lookup(exc) from exc
 
     @app.get("/v1/catalog/entities")
-    def catalog(q: str = "", limit: int = 20) -> dict[str, object]:
+    def catalog(q: str = "", limit: int = 20, anchor_month: str | None = None) -> dict[str, object]:
         try:
-            return reader.catalog(q, limit)
+            return reader.catalog(q, limit, anchor_month)
         except LookupContractError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise _http_for_lookup(exc) from exc
 
     @app.get("/v1/entities/{entity_id}/relationships")
-    def relationships(entity_id: str) -> dict[str, object]:
+    def relationships(entity_id: str, anchor_month: str | None = None) -> dict[str, object]:
         try:
-            return reader.relationships(entity_id)
+            return reader.relationships(entity_id, anchor_month)
         except LookupContractError as exc:
             raise _http_for_lookup(exc) from exc
 
     @app.get("/v1/entities/{entity_id}")
-    def review(entity_id: str) -> dict[str, object]:
+    def review(entity_id: str, anchor_month: str | None = None) -> dict[str, object]:
         try:
-            return reader.review(entity_id)
+            return reader.review(entity_id, anchor_month)
         except LookupContractError as exc:
             raise _http_for_lookup(exc) from exc
 

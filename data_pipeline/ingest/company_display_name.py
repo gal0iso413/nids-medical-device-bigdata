@@ -24,13 +24,15 @@ import pyarrow.parquet as pq
 from data_pipeline.ingest.nids_supply_excel import (
     ADAPTER_CONTRACT_VERSION,
     SourceLineage,
+    SupplyWorkbookNameError,
     create_source_lineage,
+    declared_month_from_logical_names,
     stream_nids_supply_excel,
 )
 
 
 DATASET_NAME: Final = "company_display_name"
-SCHEMA_VERSION: Final = "1.0.0"
+SCHEMA_VERSION: Final = "1.1.0"
 MANIFEST_FILENAME: Final = "_manifest.json"
 PARQUET_FILENAME: Final = "names.parquet"
 DISPLAY_NAME_SCHEMA: Final = pa.schema(
@@ -126,9 +128,74 @@ def _rows_frame(rows: Sequence[dict[str, Any]]) -> pd.DataFrame:
     return frame.sort_values("entity_id", kind="stable").reset_index(drop=True)
 
 
+def _month_dir_name(month: str) -> str:
+    return f"month={month}"
+
+
+def _write_names_parquet(path: Path, frame: pd.DataFrame) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(frame, schema=DISPLAY_NAME_SCHEMA, preserve_index=False)
+    pq.write_table(table, path, compression="zstd")
+    return _sha256_file(path)
+
+
+def _read_names_parquet(path: Path) -> pd.DataFrame:
+    return pq.read_table(path, schema=DISPLAY_NAME_SCHEMA).to_pandas()
+
+
+def _merge_month_frames(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Keep the earliest logical month's name; later disagreements set name_conflict."""
+    winners: dict[str, dict[str, Any]] = {}
+    seen_names: dict[str, set[str]] = {}
+    for month in sorted(frames):
+        frame = frames[month]
+        for row in frame.itertuples(index=False):
+            entity_id = str(row.entity_id)
+            display_name = None if pd.isna(row.display_name) else str(row.display_name)
+            seen_names.setdefault(entity_id, set())
+            if display_name:
+                seen_names[entity_id].add(display_name)
+            if entity_id not in winners:
+                winners[entity_id] = {
+                    "entity_id": entity_id,
+                    "display_name": display_name,
+                    "observation_count": int(row.observation_count),
+                    "distinct_name_count": int(row.distinct_name_count),
+                    "name_conflict": bool(row.name_conflict),
+                }
+                continue
+            winners[entity_id]["observation_count"] += int(row.observation_count)
+            if bool(row.name_conflict):
+                winners[entity_id]["name_conflict"] = True
+    for entity_id, names in seen_names.items():
+        if len(names) > 1:
+            winners[entity_id]["name_conflict"] = True
+        winners[entity_id]["distinct_name_count"] = max(
+            int(winners[entity_id]["distinct_name_count"]),
+            len(names),
+        )
+    return _rows_frame(list(winners.values()))
+
+
+def _source_month_entry(
+    *,
+    month: str,
+    lineage: SourceLineage,
+    names_sha256: str,
+    entity_count: int,
+) -> dict[str, Any]:
+    return {
+        "month": month,
+        "source_version": lineage.source_version,
+        "workbooks": lineage.canonical_payload()["workbooks"],
+        "names_sha256": names_sha256,
+        "entity_count": entity_count,
+    }
+
+
 def _candidate_manifest(
     *,
-    lineage: SourceLineage,
+    source_months: list[dict[str, Any]],
     parquet_sha256: str,
     entity_count: int,
     conflict_count: int,
@@ -136,13 +203,13 @@ def _candidate_manifest(
     fingerprint_input = {
         "dataset_name": DATASET_NAME,
         "schema_version": SCHEMA_VERSION,
-        "adapter_contract_version": lineage.adapter_contract_version,
-        "source_version": lineage.source_version,
-        "workbooks": lineage.canonical_payload()["workbooks"],
+        "adapter_contract_version": ADAPTER_CONTRACT_VERSION,
+        "source_months": source_months,
         "output_sha256": {"names": parquet_sha256},
         "entity_count": entity_count,
         "conflict_count": conflict_count,
         "names_are_not_identifiers": True,
+        "first_name_order": "logical_month_ascending",
     }
     return {
         **fingerprint_input,
@@ -173,30 +240,102 @@ def _existing_matches(final_dir: Path, candidate: dict[str, Any]) -> bool:
     return parquet_path.is_file() and _sha256_file(parquet_path) == candidate["output_sha256"]["names"]
 
 
+def _load_existing_month_frames(final_dir: Path, manifest: dict[str, Any]) -> dict[str, pd.DataFrame]:
+    frames: dict[str, pd.DataFrame] = {}
+    for entry in manifest.get("source_months") or ():
+        month = str(entry["month"])
+        path = final_dir / _month_dir_name(month) / PARQUET_FILENAME
+        if not path.is_file() or _sha256_file(path) != entry.get("names_sha256"):
+            raise CompanyDisplayNameConflictError(
+                "existing display-name month partition checksum is invalid"
+            )
+        frames[month] = _read_names_parquet(path)
+    return frames
+
+
 def write_company_display_name_directory(
     *,
     output_root: Path,
     rows: Sequence[dict[str, Any]],
     lineage: SourceLineage,
+    month: str | None = None,
 ) -> CompanyDisplayNameResult:
-    """Atomically publish the display-name directory next to monthly facts."""
+    """Atomically publish or merge one logical month of display names."""
     if not isinstance(output_root, Path):
         raise TypeError("output_root must be pathlib.Path")
     if lineage.adapter_contract_version != ADAPTER_CONTRACT_VERSION:
         raise CompanyDisplayNameError("display-name directory requires the current ingest adapter")
-    frame = _rows_frame(rows)
+    try:
+        declared_month = month or declared_month_from_logical_names(
+            tuple(item.logical_name for item in lineage.workbooks)
+        )
+    except SupplyWorkbookNameError as exc:
+        raise CompanyDisplayNameError("display-name month must come from dekade filenames") from exc
+    month_frame = _rows_frame(rows)
     final_dir = directory_path(output_root)
+    existing_manifest: dict[str, Any] | None = None
+    existing_frames: dict[str, pd.DataFrame] = {}
+    if final_dir.exists():
+        loaded = read_company_display_name_directory(output_root)
+        if loaded is None:
+            raise CompanyDisplayNameConflictError("existing display-name directory is incomplete")
+        existing_manifest, _merged = loaded
+        existing_frames = _load_existing_month_frames(final_dir, existing_manifest)
+        if declared_month in existing_frames:
+            staging_probe = _new_staging_dir(final_dir)
+            try:
+                probe_hash = _write_names_parquet(
+                    staging_probe / PARQUET_FILENAME, month_frame
+                )
+            finally:
+                shutil.rmtree(staging_probe, ignore_errors=True)
+            existing_entry = next(
+                item for item in existing_manifest["source_months"] if item["month"] == declared_month
+            )
+            if existing_entry.get("names_sha256") != probe_hash:
+                raise CompanyDisplayNameConflictError(
+                    "existing display-name month has different content; refusing overwrite"
+                )
+            return CompanyDisplayNameResult(
+                "unchanged",
+                final_dir,
+                final_dir / MANIFEST_FILENAME,
+                str(existing_manifest["created_fingerprint"]),
+                int(existing_manifest["entity_count"]),
+                int(existing_manifest["conflict_count"]),
+            )
+    frames = {**existing_frames, declared_month: month_frame}
+    merged = _merge_month_frames(frames)
     staging = _new_staging_dir(final_dir)
     try:
-        parquet_path = staging / PARQUET_FILENAME
-        table = pa.Table.from_pandas(frame, schema=DISPLAY_NAME_SCHEMA, preserve_index=False)
-        pq.write_table(table, parquet_path, compression="zstd")
-        parquet_sha256 = _sha256_file(parquet_path)
+        for month_key, frame in frames.items():
+            dest = staging / _month_dir_name(month_key) / PARQUET_FILENAME
+            existing_month_path = final_dir / _month_dir_name(month_key) / PARQUET_FILENAME
+            if month_key != declared_month and existing_month_path.is_file():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(existing_month_path, dest)
+            else:
+                _write_names_parquet(dest, frame)
+        parquet_sha256 = _write_names_parquet(staging / PARQUET_FILENAME, merged)
+        source_months = []
+        if existing_manifest is not None:
+            source_months.extend(
+                item for item in existing_manifest["source_months"] if item["month"] != declared_month
+            )
+        source_months.append(
+            _source_month_entry(
+                month=declared_month,
+                lineage=lineage,
+                names_sha256=_sha256_file(staging / _month_dir_name(declared_month) / PARQUET_FILENAME),
+                entity_count=int(len(month_frame)),
+            )
+        )
+        source_months.sort(key=lambda item: str(item["month"]))
         candidate = _candidate_manifest(
-            lineage=lineage,
+            source_months=source_months,
             parquet_sha256=parquet_sha256,
-            entity_count=int(len(frame)),
-            conflict_count=int(frame["name_conflict"].sum()) if len(frame) else 0,
+            entity_count=int(len(merged)),
+            conflict_count=int(merged["name_conflict"].sum()) if len(merged) else 0,
         )
         (staging / MANIFEST_FILENAME).write_bytes(_canonical_json_bytes(candidate))
         if final_dir.exists():
@@ -210,9 +349,7 @@ def write_company_display_name_directory(
                     candidate["entity_count"],
                     candidate["conflict_count"],
                 )
-            raise CompanyDisplayNameConflictError(
-                "existing display-name directory has different content; refusing overwrite"
-            )
+            shutil.rmtree(final_dir)
         staging.replace(final_dir)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)

@@ -1,4 +1,0 @@
-# Local Class 3 API, verified on Windows x64 CPython 3.13.12.
-duckdb==1.5.5
-fastapi==0.141.1
-uvicorn==0.52.3

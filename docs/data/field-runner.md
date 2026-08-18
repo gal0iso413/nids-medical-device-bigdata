@@ -29,10 +29,14 @@ config contract is strict: unknown fields, duplicate input paths, nonpositive
 batch/memory values, and specifying both or neither Master source modes fail.
 
 ```toml
-config_version = "1.0.0"
+config_version = "1.1.0"
 
 [paths]
-supply_workbooks = ["./inputs/supply/example-supply.xlsx"]
+supply_workbooks = [
+  "./inputs/supply/공급내역보고자료(20260101~20260110).xlsx",
+  "./inputs/supply/공급내역보고자료(20260111~20260120).xlsx",
+  "./inputs/supply/공급내역보고자료(20260121~20260131).xlsx",
+]
 checkpoint_root = "./field-artifacts/checkpoints"
 output_root = "./field-artifacts/monthly-facts"
 
@@ -45,6 +49,11 @@ batch_size = 10000
 max_month_fact_bytes = 536870912
 minimum_free_bytes = 0
 ```
+
+`supply_workbooks` is a pool of 10-day files. `run` groups them by filename month,
+publishes each closed month (exactly three files), skips already-published months,
+and reports months that are not exactly three files. A new Master lookup is used
+only for the next closed supply month; already published months are not re-joined.
 
 For Master-workbook mode, remove `source_hash` and set
 `workbooks = ["./inputs/master/example-master.xlsx"]`. `run` then calls the

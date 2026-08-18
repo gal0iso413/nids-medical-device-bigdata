@@ -2,32 +2,30 @@
 
 > **Status:** Authoritative field specification (converted from NIDS/MFDS integrated-registration data dictionary).
 > **Edit policy:** PM-maintained official log; agents **read-only**. Do not modify.
-> **Companion data:** `shared_data/top7_master_registration_data.xlsx` (active tier — profile at runtime). `sample_master_registration_data.xlsx` is archived; do not load.
+> **Companion data:** Master extracts ingested through `data_pipeline`. This file is a field dictionary, not a runtime schema.
 > **Related official doc:** `description_transaction_supply.md` (supply rows link via UDI-DI / item / model serial numbers).
 
 ## Purpose of this document
 
 Defines every column in **medical device integrated information registration data** (통합정보): company and device attributes, UDI-DI rules, license-linked fields, and **Core Essential vs Auxiliary Analysis** classifications. Use when interpreting master/registry samples or production registration extracts.
 
-## Relationship to `shared_data/`
+## Relationship to current ingest
 
 | Artifact | Role |
 |----------|------|
-| `top7_master_registration_data.xlsx` | Active-tier master rows (7 licenses) — sole source for all agents |
-| `sample_master_registration_data.xlsx` | **Archived** — Hermes audit trail only; do not load |
+| `data_pipeline` master lookup | Runtime ingest and 3-key lookup over configured master workbooks |
 | This file | Semantic authority for column labels, keys, and input rules — not a fixed runtime schema |
 
-Agents must follow **dynamic ingestion** in `shared_data/DATA_LAYER.md`: discover columns, profile dtypes/nulls, and adapt to drift; treat the table below as reference, not hardcoded code constants.
+Treat the table below as field reference, not hardcoded code constants. Runtime ingestion follows `docs/data/nids-master-product-lookup.md`.
 
-## Agent usage
+## Product usage
 
-| Agent | When to consult |
+| Product | When to consult |
 |-------|-----------------|
 | Class 1 — Anomaly | Device class, traceability, reimbursement, license status, UDI keys for graph nodes |
-| Class 2 — Forecast | Product hierarchy, discontinuation, packaging quantity per UDI-DI |
-| Class 3 — Impact | Policy flags (implantable, orphan, export-use, license cancellation) |
+| Class 2 — Comparison | Policy flags (implantable, orphan, export-use, license cancellation) |
 
-**Hierarchy of truth:** `shared_docs/structured/class_*_spec.md` overrides `official/` for assigned agent analytical work; this file supplies **field definitions** when profiling sample/prod master files.
+**Hierarchy of truth:** `docs/decisions/` and `docs/specs/` govern current implementation. This file supplies **field definitions** for master extracts.
 
 ## Keys and linkage (quick reference)
 

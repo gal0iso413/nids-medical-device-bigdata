@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string] $PythonInstaller,
     [Parameter(Mandatory = $true)][Alias("Wheelhouse")][string] $WheelhouseDirectory,
     [Parameter(Mandatory = $true)][Alias("Class1Dist")][string] $Class1DistDirectory,
-    [Parameter(Mandatory = $true)][Alias("Class3Dist")][string] $Class3DistDirectory,
+    [Parameter(Mandatory = $true)][Alias("Class2Dist")][string] $Class2DistDirectory,
     [Parameter(Mandatory = $true)][string] $OutputDirectory
 )
 
@@ -200,7 +200,7 @@ function Get-AnalysisFileRole {
     if ($Relative -eq 'metadata/source-snapshot-manifest.json') { return 'source_snapshot_manifest' }
     if ($Relative.StartsWith('source/')) { return 'source_snapshot' }
     if ($Relative.StartsWith('sites/class1/')) { return 'class1_static_site' }
-    if ($Relative.StartsWith('sites/class3/')) { return 'class3_static_site' }
+    if ($Relative.StartsWith('sites/class2/')) { return 'class2_static_site' }
     if ($Relative.EndsWith('.ps1')) { return 'analysis_tool' }
     return 'support'
 }
@@ -230,9 +230,9 @@ try {
     Copy-Item -LiteralPath $PythonInstaller -Destination (Join-Path $staging 'python\python-3.13.12-amd64.exe')
 
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class1DistDirectory) -Destination (Join-Path $staging 'sites\class1') -Label 'Class1DistDirectory'
-    Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class3DistDirectory) -Destination (Join-Path $staging 'sites\class3') -Label 'Class3DistDirectory'
+    Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class2DistDirectory) -Destination (Join-Path $staging 'sites\class2') -Label 'Class2DistDirectory'
 
-    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class3-serving-marts.ps1', 'serve-class3-site.ps1', 'rehearse-class3-site.ps1', 'build-class1-lookup-index.ps1', 'serve-class1-site.ps1', 'rehearse-class1-site.ps1', 'run-class1-graph-scale-gate.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
+    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class2-serving-marts.ps1', 'serve-class2-site.ps1', 'rehearse-class2-site.ps1', 'build-class1-lookup-index.ps1', 'serve-class1-site.ps1', 'rehearse-class1-site.ps1', 'run-class1-graph-scale-gate.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
         $source = Join-Path $PSScriptRoot $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required kit support file is missing: $name" }
         Copy-Item -LiteralPath $source -Destination (Join-Path $staging $name)
@@ -268,7 +268,7 @@ try {
         }
         dependency_lock = 'metadata/requirements-analysis-kit-win-py313.lock'
         source_snapshot = [ordered]@{ archive = $archiveRelative; manifest = 'metadata/source-snapshot-manifest.json' }
-        static_sites = [ordered]@{ class1 = 'sites/class1'; class3 = 'sites/class3' }
+        static_sites = [ordered]@{ class1 = 'sites/class1'; class2 = 'sites/class2' }
         generated_policy = 'empty_directories_only'
         files = @($fileEntries)
     }

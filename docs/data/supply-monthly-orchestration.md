@@ -25,7 +25,9 @@ run_supply_monthly_orchestration(
 
 The same call handles a new run, complete source replay into an active
 checkpoint, publication from a sealed checkpoint, and verification of a
-complete run. `derive_supply_monthly_run_id(supply_lineage,
+complete run. Callers pass **one closed month's three dekade files**. Adding
+later months is a separate run; already published months are left unchanged.
+`derive_supply_monthly_run_id(supply_lineage,
 master_verification)` exposes the existing PR-03B2A run identity formula; it
 does not define a second formula or change checkpoint version `1.0.0`.
 

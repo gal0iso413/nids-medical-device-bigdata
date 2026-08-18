@@ -22,9 +22,9 @@ class AnalysisKitBuilderTests(unittest.TestCase):
         shutil.copytree(SCRIPT_SOURCE, self.script_root, ignore=shutil.ignore_patterns("__pycache__"))
         self.wheelhouse = self.root / "wheelhouse"
         self.class1 = self.root / "class1-dist"
-        self.class3 = self.root / "class3-dist"
+        self.class2 = self.root / "class2-dist"
         self.wheelhouse.mkdir()
-        for dist, marker in ((self.class1, b"class1"), (self.class3, b"class3")):
+        for dist, marker in ((self.class1, b"class1"), (self.class2, b"class2")):
             (dist / "assets").mkdir(parents=True)
             (dist / "index.html").write_bytes(b"<html></html>\n")
             (dist / "assets" / "app.js").write_bytes(marker)
@@ -70,7 +70,7 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
     def tearDown(self):
         self.temporary.cleanup()
 
-    def build(self, *, output=None, wheelhouse=None, class1=None, class3=None):
+    def build(self, *, output=None, wheelhouse=None, class1=None, class2=None):
         command = [
             "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", str(self.script_root / "build-analysis-kit.ps1"),
@@ -78,7 +78,7 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
             "-PythonInstaller", str(self.installer),
             "-WheelhouseDirectory", str(wheelhouse or self.wheelhouse),
             "-Class1DistDirectory", str(class1 or self.class1),
-            "-Class3DistDirectory", str(class3 or self.class3),
+            "-Class2DistDirectory", str(class2 or self.class2),
             "-OutputDirectory", str(output or self.output),
         ]
         return subprocess.run(command, text=True, capture_output=True, encoding="utf-8", errors="replace")
@@ -130,7 +130,7 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
                 snapshot_manifest_path.read_bytes(),
             )
 
-        for site, source in (("class1", self.class1), ("class3", self.class3)):
+        for site, source in (("class1", self.class1), ("class2", self.class2)):
             site_root = self.output / "sites" / site
             self.assertEqual((site_root / "index.html").read_bytes(), (source / "index.html").read_bytes())
             self.assertEqual((site_root / "assets" / "app.js").read_bytes(), (source / "assets" / "app.js").read_bytes())
@@ -202,7 +202,7 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
         run = (SCRIPT_SOURCE / "run-analysis.ps1").read_text(encoding="utf-8")
         self.assertNotIn("http.server", serve)
         self.assertIn("services.class1_local_api", serve)
-        self.assertIn("services.class3_local_api", serve)
+        self.assertIn("services.class2_local_api", serve)
         self.assertIn("IndexRoot", serve)
         self.assertIn("MartRoot", serve)
         self.assertNotIn("publish-class1-web", run)

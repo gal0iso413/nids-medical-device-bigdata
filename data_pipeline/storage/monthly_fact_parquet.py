@@ -678,6 +678,11 @@ def _discover_months(output_root: Path) -> tuple[str, ...]:
     return tuple(sorted(months))
 
 
+def discover_monthly_fact_months(output_root: Path) -> tuple[str, ...]:
+    """Return published YYYYMM partitions without reading row data."""
+    return _discover_months(_require_path(output_root))
+
+
 def _normalize_months(
     output_root: Path,
     months: Iterable[str] | None,

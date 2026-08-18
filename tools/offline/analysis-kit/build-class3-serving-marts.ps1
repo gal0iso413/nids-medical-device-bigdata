@@ -1,4 +1,0 @@
-#Requires -Version 5.1
-param([Parameter(Mandatory=$true)][string]$FieldRunConfig,[Parameter(Mandatory=$true)][string]$FactRoot,[Parameter(Mandatory=$true)][string]$OutputRoot,[Parameter(Mandatory=$true)][string]$PeriodStart,[Parameter(Mandatory=$true)][string]$PeriodEnd,[string]$InstallDirectory="")
-$ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-if(!$InstallDirectory){$InstallDirectory=Join-Path (Split-Path -Parent $PSScriptRoot) 'nids-analysis-runtime'};$py=Join-Path ([IO.Path]::GetFullPath($InstallDirectory)) '.venv\Scripts\python.exe';$source=Join-Path ([IO.Path]::GetFullPath($InstallDirectory)) 'source';if(!(Test-Path $py)){throw 'runtime is missing'};Push-Location $source;try{&$py -s -m data_pipeline.analysis.class3_serving_mart --fact-root $FactRoot --output-root $OutputRoot --period-start $PeriodStart --period-end $PeriodEnd;if($LASTEXITCODE -ne 0){throw 'Class 3 serving-mart build failed'}}finally{Pop-Location}

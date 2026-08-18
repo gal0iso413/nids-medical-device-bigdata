@@ -22,8 +22,15 @@ class FieldRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.gettempdir()) / f".field-runner-{uuid4().hex[:10]}"
         self.root.mkdir()
-        self.supply = self.root / "synthetic-supply.xlsx"
-        self.supply.write_bytes(b"synthetic")
+        self.supply_names = (
+            "공급내역보고자료(20260101~20260110).xlsx",
+            "공급내역보고자료(20260111~20260120).xlsx",
+            "공급내역보고자료(20260121~20260131).xlsx",
+        )
+        self.supply_paths = tuple(self.root / name for name in self.supply_names)
+        for path in self.supply_paths:
+            path.write_bytes(b"synthetic")
+        self.supply = self.supply_paths[0]
         self.lookup_root = self.root / "lookup"
         self.checkpoint_root = self.root / "checkpoint"
         self.output_root = self.root / "output"
@@ -44,9 +51,9 @@ class FieldRunnerTests(unittest.TestCase):
         master = master or f'lookup_root = "lookup"\nsource_hash = "{HASH}"'
         path = self.root / "field-run.toml"
         path.write_text(
-            f'''config_version = "1.0.0"
+            f'''config_version = "1.1.0"
 [paths]
-supply_workbooks = ["synthetic-supply.xlsx"]
+supply_workbooks = {list(self.supply_names)!r}
 checkpoint_root = "checkpoint"
 output_root = "output"
 [master]
@@ -66,7 +73,7 @@ minimum_free_bytes = 0
 
     def test_config_resolves_relative_paths_and_exact_values(self) -> None:
         config = self.config()
-        self.assertEqual(config.supply_workbooks, (self.supply,))
+        self.assertEqual(config.supply_workbooks, self.supply_paths)
         self.assertEqual(config.master_lookup_root, self.lookup_root)
         self.assertEqual(config.checkpoint_root, self.checkpoint_root)
         self.assertEqual(config.batch_size, 100)
@@ -160,7 +167,7 @@ minimum_free_bytes = 0
         self.assertEqual(two["status"], "unchanged")
         self.assertEqual(orchestration.call_count, 2)
         for call in orchestration.call_args_list:
-            self.assertEqual(call.kwargs["supply_paths"], config.supply_workbooks)
+            self.assertEqual(tuple(call.kwargs["supply_paths"]), self.supply_paths)
             self.assertEqual(call.kwargs["batch_size"], config.batch_size)
 
     def test_master_workbook_mode_calls_existing_builder(self) -> None:
@@ -231,7 +238,7 @@ minimum_free_bytes = 0
         verifier.assert_called_once_with(config.checkpoint_root, run_id)
         orchestration.assert_called_once()
         self.assertEqual(payload["status"], "verified")
-        self.assertEqual(payload["months"], ["202601"])
+        self.assertEqual(payload["months"][0]["months"], ["202601"])
 
     def test_cli_exit_codes_and_bounded_json(self) -> None:
         stdout, stderr = StringIO(), StringIO()

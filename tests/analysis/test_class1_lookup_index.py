@@ -87,6 +87,12 @@ class Class1LookupIndexTests(unittest.TestCase):
         text = result.manifest_path.read_text(encoding="utf-8")
         self.assertNotIn("raw_score", text)
         self.assertIn('"trains_on_request":false', text.replace(" ", ""))
+        self.assertIn("schema_version=1.2.0", str(result.output_path))
+        self.assertTrue(result.output_path.name.startswith("anchor_month="))
+        catalog = json.loads((result.output_path.parent / "_catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(catalog["available_anchor_months"], ["202406"])
+        self.assertEqual(catalog["default_anchor_month"], "202406")
+        self.assertFalse(catalog["trains_on_request"])
         unchanged = build_class1_lookup_index(
             fact_root=self.facts, run_root=self.run, output_root=self.index, anchor_month="202406",
         )
@@ -145,8 +151,9 @@ class Class1LookupIndexTests(unittest.TestCase):
             lineage=SourceLineage(
                 adapter_contract_version="1.0.0",
                 source_version="fixture-names",
-                workbooks=(WorkbookSnapshot("synthetic.xlsx", 1, "a" * 64),),
+                workbooks=(WorkbookSnapshot("공급내역보고자료(20240601~20240610).xlsx", 1, "a" * 64),),
             ),
+            month="202406",
         )
         result = build_class1_lookup_index(
             fact_root=self.facts, run_root=self.run, output_root=self.index, anchor_month="202406",
@@ -157,3 +164,25 @@ class Class1LookupIndexTests(unittest.TestCase):
         self.assertEqual(mapped["a"], "알파의료")
         self.assertEqual(mapped["b"], "베타병원")
         self.assertIn("name_directory_fingerprint", result.manifest_path.read_text(encoding="utf-8"))
+
+    def test_second_anchor_is_a_new_partition(self) -> None:
+        build_class1_lookup_index(
+            fact_root=self.facts, run_root=self.run, output_root=self.index, anchor_month="202406",
+        )
+        extra = _fact(MONTHS + ("202407",))
+        write_monthly_fact_partitions(extra, self.facts)
+        run_class1_offline_anchor(
+            Class1OfflineAnchorConfig(
+                self.facts, self.run, "202407", "a", ("11", "26"), "gadnr-test-v1", 7, 1,
+            ),
+            scorer=_scorer,
+        )
+        second = build_class1_lookup_index(
+            fact_root=self.facts, run_root=self.run, output_root=self.index, anchor_month="202407",
+        )
+        self.assertEqual(second.status, "written")
+        catalog = json.loads((second.output_path.parent / "_catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(catalog["available_anchor_months"], ["202406", "202407"])
+        self.assertEqual(catalog["default_anchor_month"], "202407")
+        self.assertTrue((second.output_path.parent / "anchor_month=202406" / "entities.parquet").is_file())
+        self.assertTrue((second.output_path / "entities.parquet").is_file())

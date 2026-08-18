@@ -340,7 +340,7 @@ def _seal_active_checkpoint(
         )
     except CompanyDisplayNameError as exc:
         raise OrchestrationIntegrityError(
-            "Could not publish company display-name directory from the ingest pass"
+            f"Could not publish company display-name directory from the ingest pass: {exc}"
         ) from exc
     return sealed
 

@@ -14,12 +14,18 @@ from openpyxl import Workbook
 from data_pipeline.contracts import SOURCE_REQUIRED_COLUMNS, normalize_source_rows
 from data_pipeline.ingest import nids_supply_excel as adapter
 from data_pipeline.ingest.nids_supply_excel import (
+    ClosedSupplyMonth,
     DataSheetDiscoveryError,
     DataSheetSchemaError,
     NidsSupplyExcelError,
+    RejectedSupplyMonth,
     SOURCE_BATCH_COLUMNS,
+    SupplyWorkbookNameError,
     create_source_lineage,
+    declared_month_from_logical_names,
     discover_supply_sheets,
+    group_closed_supply_months,
+    parse_supply_workbook_date_range,
     stream_nids_supply_excel,
 )
 
@@ -912,6 +918,81 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         self.assertTrue(pd.isna(actual.loc[0, "amount_clean"]))
         self.assertEqual(report.amount_conversion_failed.total, 1)
         self.assertIn("amount_invalid", actual.loc[0, "row_quality_flags"])
+
+
+class SupplyWorkbookDateRangeTests(unittest.TestCase):
+    def test_parses_real_filename_without_spaces(self) -> None:
+        parsed = parse_supply_workbook_date_range("공급내역보고자료(20260101~20260110).xlsx")
+        self.assertEqual(parsed.month, "202601")
+        self.assertEqual(parsed.start.isoformat(), "2026-01-01")
+        self.assertEqual(parsed.end.isoformat(), "2026-01-10")
+
+    def test_february_end_uses_datetime_leap_day(self) -> None:
+        parsed = parse_supply_workbook_date_range("공급내역보고자료(20240221~20240229).xlsx")
+        self.assertEqual(parsed.month, "202402")
+        self.assertEqual(parsed.end.isoformat(), "2024-02-29")
+
+    def test_rejects_non_leap_february_29(self) -> None:
+        with self.assertRaises(SupplyWorkbookNameError):
+            parse_supply_workbook_date_range("공급내역보고자료(20250221~20250229).xlsx")
+
+    def test_rejects_range_that_crosses_months(self) -> None:
+        with self.assertRaises(SupplyWorkbookNameError):
+            parse_supply_workbook_date_range("공급내역보고자료(20260121~20260203).xlsx")
+
+    def test_group_closes_exactly_three_files_and_rejects_other_counts(self) -> None:
+        root = TEMP_PARENT / f".dekade-group-{uuid4().hex[:8]}"
+        root.mkdir()
+        try:
+            january = [
+                root / "공급내역보고자료(20260101~20260110).xlsx",
+                root / "공급내역보고자료(20260111~20260120).xlsx",
+                root / "공급내역보고자료(20260121~20260131).xlsx",
+            ]
+            february = [
+                root / "공급내역보고자료(20260201~20260210).xlsx",
+                root / "공급내역보고자료(20260211~20260220).xlsx",
+            ]
+            for path in (*january, *february):
+                path.write_bytes(b"x")
+            grouped = group_closed_supply_months((*january, *february))
+            self.assertEqual(len(grouped.closed), 1)
+            self.assertEqual(grouped.closed[0].month, "202601")
+            self.assertEqual(grouped.closed[0].paths, tuple(sorted(january, key=lambda item: item.name)))
+            self.assertEqual(grouped.rejected, (
+                RejectedSupplyMonth(
+                    "202602", 2,
+                    (
+                        "공급내역보고자료(20260201~20260210).xlsx",
+                        "공급내역보고자료(20260211~20260220).xlsx",
+                    ),
+                    "expected_exactly_three_files",
+                ),
+            ))
+            self.assertEqual(
+                declared_month_from_logical_names([path.name for path in january]),
+                "202601",
+            )
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_four_files_in_one_month_are_rejected(self) -> None:
+        root = TEMP_PARENT / f".dekade-four-{uuid4().hex[:8]}"
+        root.mkdir()
+        try:
+            paths = [
+                root / "공급내역보고자료(20260401~20260410).xlsx",
+                root / "공급내역보고자료(20260411~20260420).xlsx",
+                root / "공급내역보고자료(20260421~20260430).xlsx",
+                root / "공급내역보고자료(20260421~20260422).xlsx",
+            ]
+            for path in paths:
+                path.write_bytes(b"x")
+            grouped = group_closed_supply_months(paths)
+            self.assertEqual(grouped.closed, ())
+            self.assertEqual(grouped.rejected[0].path_count, 4)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":

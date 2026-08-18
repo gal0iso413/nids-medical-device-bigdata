@@ -34,4 +34,4 @@ and edge counts. This preflight does not decide Class 1 GAD-NR feasibility;
 measure that with the [graph-scale gate](class1-graph-scale-gate.md) after
 monthly Parquet exists. Failure of that gate does not authorize slicing the
 training graph by region or item group. API and DuckDB work belong to a later
-Class 3 serving-mart/API PR.
+Class 2 serving-mart/API PR.

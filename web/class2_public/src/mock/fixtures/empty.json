@@ -1,0 +1,34 @@
+{
+  "schema_version": "class2-mock-view-v1",
+  "data_version": "synthetic-fixture-v1",
+  "policy_version": "development-unapproved",
+  "synthetic": true,
+  "development_notice": "DEVELOPMENT ONLY — synthetic fixture; not production or medical-device data.",
+  "view_state": "empty",
+  "release_status": "released",
+  "selection_summary": {
+    "selections": [
+      { "type": "item_group", "id": "synthetic:item-group:alpha", "label": "SYNTHETIC_ITEM_GROUP_ALPHA" },
+      { "type": "item_name", "id": "synthetic:item-name:beta", "label": "SYNTHETIC_ITEM_NAME_BETA" }
+    ],
+    "period": { "start_month": "2099-01", "end_month": "2099-03" }
+  },
+  "per_item_results": [],
+  "portfolio_summary": {
+    "release_status": "not_available",
+    "notice": "No synthetic results match the development selection."
+  },
+  "observed_reach": {
+    "release_status": "not_available",
+    "notice": "No synthetic observed-reach result is available."
+  },
+  "coverage": {
+    "release_status": "not_available",
+    "field_states": [
+      { "field": "reported_activity", "state": "not_available", "notice": "Synthetic empty-state marker." },
+      { "field": "raw_supply_quantity", "state": "not_available", "notice": "Synthetic empty-state marker." },
+      { "field": "supplier_recipient_counts", "state": "not_available", "notice": "Synthetic empty-state marker." },
+      { "field": "industry_region_composition", "state": "not_available", "notice": "Synthetic empty-state marker." }
+    ]
+  }
+}

@@ -1,17 +1,17 @@
-"""Versioned contracts shared by the Class 1 and Class 3 pipelines."""
+"""Versioned contracts shared by the Class 1 and Class 2 pipelines."""
 
 from .product_key import MAX_EXACT_FLOAT_INTEGER, normalize_integer_code
 
-from .class3_analysis import (
-    CLASS3_ANALYSIS_SCHEMA_VERSION,
-    Class3AnalysisContractError,
-    Class3AnalysisTables,
+from .class2_analysis import (
+    CLASS2_ANALYSIS_SCHEMA_VERSION,
+    Class2AnalysisContractError,
+    Class2AnalysisTables,
     empty_selection_catalog,
     empty_selection_coverage_summary,
     empty_selection_month_composition,
     empty_selection_month_metrics,
-    serialize_class3_analysis,
-    validate_class3_analysis_tables,
+    serialize_class2_analysis,
+    validate_class2_analysis_tables,
 )
 
 from .supply_monthly import (
@@ -41,9 +41,9 @@ __all__ = [
     "BLOCK_PRODUCT_KEY_INVALID",
     "BLOCK_TRANSACTION_SIGN_POLICY_PENDING",
     "BLOCK_TRANSACTION_TYPE_UNKNOWN",
-    "CLASS3_ANALYSIS_SCHEMA_VERSION",
-    "Class3AnalysisContractError",
-    "Class3AnalysisTables",
+    "CLASS2_ANALYSIS_SCHEMA_VERSION",
+    "Class2AnalysisContractError",
+    "Class2AnalysisTables",
     "FACT_SCHEMA_NAME",
     "FACT_SCHEMA_VERSION",
     "MONTHLY_FACT_COLUMNS",
@@ -62,7 +62,7 @@ __all__ = [
     "empty_selection_month_metrics",
     "normalize_source_rows",
     "normalize_integer_code",
-    "serialize_class3_analysis",
-    "validate_class3_analysis_tables",
+    "serialize_class2_analysis",
+    "validate_class2_analysis_tables",
     "validate_monthly_fact",
 ]

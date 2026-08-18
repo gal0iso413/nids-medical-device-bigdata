@@ -21,8 +21,24 @@ from data_pipeline.contracts.supply_monthly import empty_monthly_fact
 from data_pipeline.ingest.company_display_name import write_company_display_name_directory
 from data_pipeline.ingest.nids_supply_excel import SourceLineage, WorkbookSnapshot
 from data_pipeline.storage.monthly_fact_parquet import write_monthly_fact_partitions
-from services.class1_local_api.app import StaticRootError, create_app, create_integrated_app
-from services.class1_local_api.reader import IndexReader, LookupContractError
+from services.class1_local_api.reader import (
+    IndexReader,
+    LookupContractError,
+    LookupEntityNotFoundError,
+    LookupMonthUnavailableError,
+)
+
+try:
+    from fastapi.testclient import TestClient
+    from services.class1_local_api.app import StaticRootError, create_app, create_integrated_app
+except ModuleNotFoundError:  # pragma: no cover - local env without FastAPI
+    TestClient = None
+    StaticRootError = RuntimeError
+    create_app = None
+    create_integrated_app = None
+
+
+HAS_FASTAPI = create_app is not None
 
 
 MONTHS = ("202401", "202402", "202403", "202404", "202405", "202406")
@@ -173,7 +189,7 @@ class Class1LocalLookupApiTests(unittest.TestCase):
             lineage=SourceLineage(
                 adapter_contract_version="1.0.0",
                 source_version="fixture-names",
-                workbooks=(WorkbookSnapshot("synthetic.xlsx", 1, "a" * 64),),
+                workbooks=(WorkbookSnapshot("공급내역보고자료(20240601~20240610).xlsx", 1, "a" * 64),),
             ),
         )
         build_class1_lookup_index(
@@ -184,10 +200,11 @@ class Class1LocalLookupApiTests(unittest.TestCase):
             queue = reader.review_queue()
         finally:
             reader.close()
-        app = create_app(index)
-        paths = {getattr(route, "path", "") for route in app.routes}
-        app.state.index_reader.close()
-        self.assertIn("/v1/review-queue", paths)
+        if HAS_FASTAPI:
+            app = create_app(index)
+            paths = {getattr(route, "path", "") for route in app.routes}
+            app.state.index_reader.close()
+            self.assertIn("/v1/review-queue", paths)
         self.assertEqual(queue["eligible_count"], 12)
         self.assertTrue(queue["truncated"])
         self.assertEqual(len(queue["entities"]), 10)
@@ -204,13 +221,18 @@ class Class1LocalLookupApiTests(unittest.TestCase):
     def test_unknown_or_invalid_entity_is_rejected(self) -> None:
         reader = IndexReader.open(self.index)
         try:
-            with self.assertRaises(LookupContractError):
+            with self.assertRaises(LookupEntityNotFoundError):
                 reader.review("missing")
             with self.assertRaises(LookupContractError):
                 reader.relationships("../secret")
+            with self.assertRaises(LookupMonthUnavailableError):
+                reader.review("a", anchor_month="202501")
+            with self.assertRaises(LookupMonthUnavailableError):
+                reader.review("a", anchor_month="202413")
         finally:
             reader.close()
 
+    @unittest.skipUnless(HAS_FASTAPI, "fastapi is not installed")
     def test_app_factory_and_static_root_guards(self) -> None:
         app = create_app(self.index)
         self.assertEqual(app.state.index_reader.index.entity_count, 2)
@@ -245,7 +267,7 @@ class Class1LocalLookupApiTests(unittest.TestCase):
             lineage=SourceLineage(
                 adapter_contract_version="1.0.0",
                 source_version="fixture-names",
-                workbooks=(WorkbookSnapshot("synthetic.xlsx", 1, "a" * 64),),
+                workbooks=(WorkbookSnapshot("공급내역보고자료(20240601~20240610).xlsx", 1, "a" * 64),),
             ),
         )
         named_index = self.root / "named-index"
@@ -277,3 +299,31 @@ class Class1LocalLookupApiTests(unittest.TestCase):
         self.assertNotIn("/v1/entities?query", text)
         self.assertIn("/v1/catalog/entities", text)
         self.assertIn("/v1/review-queue", text)
+        self.assertIn("anchor_month", text)
+
+    @unittest.skipUnless(HAS_FASTAPI, "fastapi is not installed")
+    def test_missing_month_is_422_and_missing_entity_is_404(self) -> None:
+        app = create_app(self.index)
+        try:
+            with TestClient(app) as client:
+                status = client.get("/v1/status")
+                self.assertEqual(status.status_code, 200)
+                payload = status.json()
+                self.assertEqual(payload["available_anchor_months"], ["202406"])
+                self.assertEqual(payload["default_anchor_month"], "202406")
+                self.assertFalse(payload["trains_on_request"])
+                present = client.get("/v1/entities/a", params={"anchor_month": "202406"})
+                self.assertEqual(present.status_code, 200)
+                omitted = client.get("/v1/entities/a")
+                self.assertEqual(omitted.status_code, 200)
+                missing_month = client.get("/v1/entities/a", params={"anchor_month": "202501"})
+                self.assertEqual(missing_month.status_code, 422)
+                self.assertIn("available lookup partition", missing_month.json()["detail"])
+                future = client.get("/v1/review-queue", params={"anchor_month": "209901"})
+                self.assertEqual(future.status_code, 422)
+                missing_entity = client.get("/v1/entities/missing", params={"anchor_month": "202406"})
+                self.assertEqual(missing_entity.status_code, 404)
+                malformed = client.get("/v1/entities/a", params={"anchor_month": "202413"})
+                self.assertEqual(malformed.status_code, 422)
+        finally:
+            app.state.index_reader.close()

@@ -96,7 +96,7 @@ def lineage() -> SourceLineage:
     return SourceLineage(
         ADAPTER_CONTRACT_VERSION,
         "nids-supply-v1:" + "a" * 64,
-        (WorkbookSnapshot("synthetic-supply.xlsx", 123, "b" * 64),),
+        (WorkbookSnapshot("공급내역보고자료(20260101~20260110).xlsx", 123, "b" * 64),),
     )
 
 
@@ -115,7 +115,7 @@ def report(rows: int) -> SupplyIngestionReport:
     value = SupplyIngestionReport()
     value.sheet_profiles.append(
         SheetIngestionProfile(
-            workbook="synthetic-supply.xlsx",
+            workbook="공급내역보고자료(20260101~20260110).xlsx",
             sheet="data",
             rows_read=rows,
             rows_emitted=rows,
@@ -128,8 +128,8 @@ def sample_rows() -> list[dict[str, object]]:
     return [
         source_row(1, udi="UDI-A", day=5, flags="high_value_review"),
         source_row(2, udi="UDI-B", day=7, amount=None, item_name="ITEM-B"),
-        source_row(3, month="202602", item=40, udi="UDI-C", piece_qty="3"),
-        source_row(4, month="202602", item=90, udi="UDI-X"),
+        source_row(3, month="202601", item=40, udi="UDI-C", piece_qty="3"),
+        source_row(4, month="202601", item=90, udi="UDI-X"),
     ]
 
 
@@ -161,7 +161,7 @@ class SupplyMonthlyCheckpointTests(unittest.TestCase):
             master_verification=master(),
         )
 
-    def test_two_batch_two_month_reduce_equals_one_shot_pr01(self) -> None:
+    def test_two_batch_reduce_equals_one_shot_pr01(self) -> None:
         rows = sample_rows()
         with self.open() as checkpoint:
             first = checkpoint.apply_classified_batch(
@@ -279,7 +279,10 @@ class SupplyMonthlyCheckpointTests(unittest.TestCase):
         )
         expected = aggregate_company_counterparty_product_month(frame(rows))
         assert_frame_equal(actual, expected)
-        january = actual.loc[actual["month"].eq("202601")].iloc[0]
+        january = actual.loc[
+            actual["month"].eq("202601")
+            & actual["quality_flags"].astype("string").str.contains("item_name_id_conflict", regex=False)
+        ].iloc[0]
         self.assertEqual(january["amount_sum_clean"], Decimal("1000.25"))
         self.assertEqual(january["unique_udi_count"], 2)
         self.assertEqual(january["active_day_count"], 2)

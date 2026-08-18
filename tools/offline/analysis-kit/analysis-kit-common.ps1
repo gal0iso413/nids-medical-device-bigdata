@@ -53,7 +53,7 @@ function Test-AnalysisKit {
        $manifest.source_commit -notmatch '^[0-9a-f]{40}$' -or $manifest.source_tree_fingerprint -notmatch '^[0-9a-f]{64}$' -or
        $manifest.source_snapshot.archive -notmatch '^source/[^/]+\.zip$' -or
        $manifest.source_snapshot.manifest -ne 'metadata/source-snapshot-manifest.json' -or
-       $manifest.static_sites.class1 -ne 'sites/class1' -or $manifest.static_sites.class3 -ne 'sites/class3' -or
+       $manifest.static_sites.class1 -ne 'sites/class1' -or $manifest.static_sites.class2 -ne 'sites/class2' -or
        $manifest.generated_policy -ne 'empty_directories_only') {throw "Analysis kit contract is invalid."}
     $expected=@{};$previous=''
     foreach($entry in @($manifest.files)){
@@ -69,7 +69,7 @@ function Test-AnalysisKit {
     foreach($relative in @($manifest.dependency_lock,$manifest.source_snapshot.archive,$manifest.source_snapshot.manifest)){
         if(-not $expected.ContainsKey([string]$relative)){throw "Analysis kit required path is absent from its exact file set."}
     }
-    foreach($site in @('sites/class1','sites/class3')){
+    foreach($site in @('sites/class1','sites/class2')){
         if(-not $expected.ContainsKey("$site/index.html")){throw "Analysis kit static site is missing index.html."}
         $generated=Join-Path $root ("$site/generated".Replace('/',[System.IO.Path]::DirectorySeparatorChar))
         if(-not (Test-Path -LiteralPath $generated -PathType Container) -or @(Get-ChildItem -LiteralPath $generated -Force).Count -ne 0){throw "Analysis kit generated directories must exist and be empty."}

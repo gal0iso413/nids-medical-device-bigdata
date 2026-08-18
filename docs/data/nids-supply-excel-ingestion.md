@@ -18,6 +18,8 @@
 create_source_lineage(workbook_paths) -> SourceLineage
 discover_supply_sheets(workbook_path, header_scan_limit=12) -> tuple[DiscoveredSheet, ...]
 stream_nids_supply_excel(workbook_paths, batch_size=10_000, header_scan_limit=12) -> SupplyExcelStream
+parse_supply_workbook_date_range(logical_name) -> SupplyWorkbookDateRange
+group_closed_supply_months(paths) -> SupplyMonthGrouping
 ```
 
 `SupplyExcelStream`은 한 번만 순회할 수 있고 `close()`를 여러 번 호출해도 안전하다. `lineage`는 순회 전에도 사용할 수 있고 `report`는 순회하면서 누적된다. workbook은 정상·오류·generator 종료 경로에서 닫힌다. adapter는 batch를 반환할 뿐 전체 결과를 내부에 누적하지 않는다. 조기 종료가 가능한 호출자는 context manager를 사용한다.
@@ -31,6 +33,12 @@ with stream_nids_supply_excel(paths) as stream:
 ```
 
 context 종료는 활성 generator를 즉시 닫아 workbook의 `finally`를 실행한다. 닫힌 stream 또는 한 번 완료된 stream은 다시 순회할 수 없다.
+
+## 10일 파일명과 닫힌 월
+
+공급 논리명은 공백 없는 `공급내역보고자료(YYYYMMDD~YYYYMMDD).xlsx`만 인정한다. 시작·종료는 같은 달이어야 하고, 월 키는 시작일의 `YYYYMM`이다. 날짜는 `datetime.strptime`과 `calendar.monthrange`로 검증하므로 윤년 2월 29일은 유효하고 비윤년 2월 29일은 거절한다. 월 길이 사전을 하드코딩하지 않는다.
+
+같은 `YYYYMM`으로 묶인 파일이 정확히 3개이면 그 달을 닫는다. 2개나 4개는 그 달만 거절하고 파일 수를 보고서에 남긴다. 행의 `공급일자`는 원문으로 남기며 월 파티션을 다시 나누지 않는다. 파싱할 수 없는 파일명은 침묵 skip이 아니라 닫힌 실패다.
 
 ## Content-based sheet discovery
 

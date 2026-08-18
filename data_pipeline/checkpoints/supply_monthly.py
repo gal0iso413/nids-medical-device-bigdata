@@ -41,6 +41,8 @@ from data_pipeline.ingest.nids_supply_excel import (
     ADAPTER_CONTRACT_VERSION,
     SourceLineage,
     SupplyIngestionReport,
+    SupplyWorkbookNameError,
+    declared_month_from_logical_names,
 )
 from data_pipeline.storage.master_product_lookup import (
     LOGICAL_SCHEMA_VERSION as MASTER_SCHEMA_VERSION,
@@ -683,6 +685,7 @@ def _normalized_batch(
     batch: pd.DataFrame,
     matched_mask: Sequence[bool],
     supply_source_version: str,
+    workbooks: Sequence[dict[str, Any]],
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     if not isinstance(batch, pd.DataFrame):
         raise TypeError("batch must be a pandas DataFrame")
@@ -699,7 +702,13 @@ def _normalized_batch(
     forward = normalized.loc[forward_mask]
     if not forward.empty:
         validate_forward_supply_rows(forward)
-    normalized["month"] = normalized["supply_date"].dt.strftime("%Y%m")
+    try:
+        declared_month = declared_month_from_logical_names(
+            tuple(str(item["logical_name"]) for item in workbooks)
+        )
+    except SupplyWorkbookNameError as exc:
+        raise CheckpointLineageError("supply workbook names must declare one calendar month") from exc
+    normalized["month"] = declared_month
     return normalized, classifications
 
 
@@ -764,7 +773,8 @@ class SupplyMonthlyCheckpoint:
         if self.state != "active":
             raise CheckpointSealedError("A sealed checkpoint cannot accept batches")
         normalized, classifications = _normalized_batch(
-            batch, matched_mask, self.run_manifest["supply"]["source_version"]
+            batch, matched_mask, self.run_manifest["supply"]["source_version"],
+            self.run_manifest["supply"]["workbooks"],
         )
         records: list[tuple[bytes, bytes, str, int, int]] = []
         for position, row in normalized.iterrows():

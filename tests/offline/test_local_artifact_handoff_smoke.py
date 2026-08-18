@@ -9,7 +9,7 @@ import pandas as pd
 
 from class_1_anomaly_detection.src.offline_anchor_runner import Class1OfflineAnchorConfig, run_class1_offline_anchor
 from data_pipeline.contracts.supply_monthly import empty_monthly_fact
-from data_pipeline.offline.class3_analysis_export import Class3SelectionRequest, export_class3_analysis
+from data_pipeline.offline.class2_analysis_export import Class2SelectionRequest, export_class2_analysis
 from data_pipeline.storage.monthly_fact_parquet import write_monthly_fact_partitions
 
 
@@ -29,9 +29,9 @@ class LocalArtifactHandoffSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); parquet = root / "parquet"; write_monthly_fact_partitions(synthetic_fact(("202401","202402","202403","202404","202405","202406")), parquet)
             public = root / "public"
-            export_class3_analysis(parquet_root=parquet, period_start="202401", period_end="202402", selections=(Class3SelectionRequest("item_group", "SYNTHETIC_GROUP"),), web_public_root=public)
-            class3 = json.loads((public / "generated" / "class3-analysis.json").read_text())
-            self.assertEqual(class3, fixture["class3"])
+            export_class2_analysis(parquet_root=parquet, period_start="202401", period_end="202402", selections=(Class2SelectionRequest("item_group", "SYNTHETIC_GROUP"),), web_public_root=public)
+            class2 = json.loads((public / "generated" / "class2-analysis.json").read_text())
+            self.assertEqual(class2, fixture["class2"])
             result = run_class1_offline_anchor(Class1OfflineAnchorConfig(parquet, root / "output", "202406", "synthetic-a", ("11","26"), "synthetic", 7, 1, 2, 2))
             service = json.loads((result.run_directory / "internal-service.json").read_text())
             graph = json.loads((result.run_directory / "internal-one-hop-graph.json").read_text())

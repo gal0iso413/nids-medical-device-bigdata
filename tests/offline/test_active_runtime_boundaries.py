@@ -20,6 +20,18 @@ REMOVED_PATHS = (
     "class_1_anomaly_detection/research",
     "class_3_impact_evaluation",
     "prototype_meeting",
+    "class_2_supply_forecast",
+    ".hermes",
+    "scripts/notify_hermes_deliverable.py",
+    "shared_utils",
+    "requirements.txt",
+    "shared_data",
+    "docs/migration",
+    "docs/archive",
+    "docs/architecture",
+    "shared_docs/structured/class_1_anomaly_spec.md",
+    "shared_docs/structured/class_2_forecast_spec.md",
+    "shared_docs/structured/class_3_evaluation_spec.md",
 )
 
 
@@ -42,16 +54,18 @@ class ActiveRuntimeBoundaryTests(unittest.TestCase):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("docs/data/local-analysis-turnkey-runbook.md", text)
         self.assertIn("tools/offline/analysis-kit/README.md", text)
+        self.assertNotIn("class_2_supply_forecast", text)
+        self.assertNotIn("streamlit", text.lower())
 
     def test_supported_runner_and_react_routes_exist(self) -> None:
         self.assertTrue((ROOT / "class_1_anomaly_detection" / "src" / "offline_anchor_runner.py").is_file())
-        self.assertTrue((ROOT / "data_pipeline" / "offline" / "class3_analysis_export.py").is_file())
+        self.assertTrue((ROOT / "data_pipeline" / "offline" / "class2_analysis_export.py").is_file())
         self.assertTrue((ROOT / "web" / "class1_internal").is_dir())
-        self.assertTrue((ROOT / "web" / "class3_public").is_dir())
+        self.assertTrue((ROOT / "web" / "class2_public").is_dir())
 
     def test_active_execution_code_does_not_import_removed_runtime(self) -> None:
         pattern = re.compile(
-            r"^\s*(?:from\s+(?:class_3_impact_evaluation|class_1_anomaly_detection\.src\.(?:eda|experiments|graph|ingest))|import\s+(?:class_3_impact_evaluation|class_1_anomaly_detection\.src\.(?:eda|experiments|graph|ingest)))",
+            r"^\s*(?:from\s+(?:class_3_impact_evaluation|class_2_supply_forecast|shared_utils|class_1_anomaly_detection\.src\.(?:eda|experiments|graph|ingest))|import\s+(?:class_3_impact_evaluation|class_2_supply_forecast|shared_utils|class_1_anomaly_detection\.src\.(?:eda|experiments|graph|ingest)))",
             re.MULTILINE,
         )
         for suffix in ("*.py", "*.ps1"):
