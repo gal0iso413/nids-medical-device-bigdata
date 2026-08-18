@@ -132,7 +132,7 @@ function Ready({ state, footer, hideHeader }: { state: Extract<LoadState, { kind
         <article>
           <h2>검토 우선순위</h2>
           <p>{priority}</p>
-          <small>역할군 {roleLabel(row.role_group)} · 표본 {row.role_group_sample_size}</small>
+          <small>역할군 {roleLabel(row.role_group)} · 표본 {row.role_group_sample_size} · 해당 앵커월·해당 역할군 안의 상대 순위</small>
         </article>
         <article>
           <h2>관계망 범위</h2>

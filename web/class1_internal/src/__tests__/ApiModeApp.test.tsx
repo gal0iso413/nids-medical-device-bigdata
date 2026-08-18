@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import ApiModeApp from "../ApiModeApp";
-import type { Class1LookupAdapter } from "../apiLookupAdapter";
+import { LookupEntityMissingError, type Class1LookupAdapter } from "../apiLookupAdapter";
 
 const status = {
   service_mode: "local_internal_only",
   public_release_policy: "not_approved",
   anchor_month: "202406",
+  available_anchor_months: ["202405", "202406"],
+  default_anchor_month: "202406",
   window_months: ["202404", "202405", "202406"],
   entity_count: 2,
   edge_count: 1,
@@ -81,6 +83,44 @@ describe("Class 1 API lookup screen", () => {
     expect(screen.getAllByText("합성유통").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/합성병원/).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain("raw_score");
+  });
+
+  it("keeps the selected company across anchor months and reports absence", async () => {
+    const adapter: Class1LookupAdapter = {
+      status: async () => status,
+      reviewQueue: vi.fn(async (month) => ({
+        anchor_month: month ?? "202406",
+        window_months: month === "202405" ? ["202403", "202404", "202405"] : ["202404", "202405", "202406"],
+        role_group: "distributor",
+        limit: 10,
+        eligible_count: 1,
+        truncated: false,
+        entities: [{
+          rank: 1,
+          entity_id: month === "202405" ? "b" : "a",
+          display_name: month === "202405" ? "다른유통" : "합성유통",
+          name_conflict: false,
+          role_group: "distributor",
+          region: "11",
+          review_priority_percentile: 100,
+          role_group_sample_size: 10,
+        }],
+      })),
+      search: vi.fn(async () => []),
+      lookup: vi.fn(async (_id, month) => {
+        if (month === "202405") {
+          throw new LookupEntityMissingError("entity missing");
+        }
+        return ready;
+      }),
+    };
+    render(<ApiModeApp adapter={adapter} status={status} />);
+    fireEvent.click(await screen.findByRole("button", { name: /합성유통/ }));
+    expect(await screen.findByText("역할군 백분위 100")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("완료 앵커월"), { target: { value: "202405" } });
+    expect(await screen.findByText("이 업체는 해당 앵커 창에 없습니다")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /다른유통/ })).toBeInTheDocument();
+    expect(adapter.lookup).toHaveBeenCalledWith("a", "202405");
   });
 
   it("looks up a Korean company name as a secondary path", async () => {

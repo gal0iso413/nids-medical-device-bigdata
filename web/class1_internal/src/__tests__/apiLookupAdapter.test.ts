@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createClass1LookupAdapter } from "../apiLookupAdapter";
+import { createClass1LookupAdapter, LookupEntityMissingError, LookupMonthUnavailableError } from "../apiLookupAdapter";
 
 const status = {
   service_mode: "local_internal_only",
@@ -34,14 +34,16 @@ describe("Class 1 lookup adapter", () => {
   it("loads status and a lookup pair without accepting raw scores", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = String(url);
-      const payload = path.endsWith("/v1/status") ? status : path.endsWith("/relationships") ? graph : service;
+      const payload = path.includes("/v1/status") ? status : path.includes("/relationships") ? graph : service;
       return { ok: true, status: 200, json: async () => payload };
     }) as unknown as typeof fetch);
     const adapter = createClass1LookupAdapter("/api");
     await expect(adapter.status()).resolves.toMatchObject({ trains_on_request: false, entity_count: 2 });
-    const ready = await adapter.lookup("a");
+    const ready = await adapter.lookup("a", "202406");
     expect(ready.graph.selected_entity_id).toBe("a");
     expect(JSON.stringify(ready)).not.toContain("raw_score");
+    const urls = vi.mocked(fetch).mock.calls.map((call) => String(call[0]));
+    expect(urls.some((item) => item.includes("anchor_month=202406") && item.includes("/v1/entities/a"))).toBe(true);
   });
 
   it("loads the fixed distributor review queue", async () => {
@@ -97,5 +99,16 @@ describe("Class 1 lookup adapter", () => {
       ok: true, status: 200, json: async () => ({ ...service, raw_score: 1 }),
     })) as unknown as typeof fetch);
     await expect(createClass1LookupAdapter("/api").lookup("a")).rejects.toThrow(/raw_score/);
+  });
+
+  it("maps 404 to a missing entity and 422 missing month to an unavailable month", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("missing")) {
+        return { ok: false, status: 404, json: async () => ({ detail: "entity_id is not in the lookup index" }) };
+      }
+      return { ok: false, status: 422, json: async () => ({ detail: "anchor_month is not an available lookup partition" }) };
+    }) as unknown as typeof fetch);
+    await expect(createClass1LookupAdapter("/api").lookup("missing", "202406")).rejects.toBeInstanceOf(LookupEntityMissingError);
+    await expect(createClass1LookupAdapter("/api").lookup("a", "202501")).rejects.toBeInstanceOf(LookupMonthUnavailableError);
   });
 });

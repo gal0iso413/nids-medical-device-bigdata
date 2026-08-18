@@ -19,8 +19,8 @@ Use these documents in order:
 ## Active runtime
 
 - Class 1 uses the GAD-NR offline anchor runner as its only model route.
-- Class 3 uses company/product-group comparison analysis only.
-- The final Class 1 and Class 3 interfaces are React under `web/`.
+- Class 2 uses company/product-group comparison analysis only.
+- The final Class 1 and Class 2 interfaces are React under `web/`.
 
 Do not introduce Streamlit, MCDM, legacy model comparison, or
 `prototype_meeting` as an execution path.

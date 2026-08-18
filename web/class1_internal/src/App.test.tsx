@@ -35,6 +35,7 @@ describe("Class 1 local monitor", () => {
     render(<App />);
     expect(await screen.findByText("검토 우선순위")).toBeInTheDocument();
     expect(screen.getByText("역할군 백분위 100")).toBeInTheDocument();
+    expect(screen.getByText(/해당 앵커월·해당 역할군 안의 상대 순위/)).toBeInTheDocument();
     expect(screen.getByText("경로 통과 보조지표")).toBeInTheDocument();
     expect(screen.getByText("역할군 백분위 87.5")).toBeInTheDocument();
     expect(screen.getByText("관측 경로에서 차지하는 비중")).toBeInTheDocument();

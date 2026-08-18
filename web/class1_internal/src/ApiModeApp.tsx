@@ -1,7 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Ready } from "./App";
 import type { LoadState } from "./dataSource";
-import type { ApiStatus, CatalogHit, Class1LookupAdapter, ReviewQueue, ReviewQueueItem } from "./apiLookupAdapter";
+import {
+  LookupEntityMissingError,
+  LookupMonthUnavailableError,
+  type ApiStatus,
+  type CatalogHit,
+  type Class1LookupAdapter,
+  type ReviewQueue,
+  type ReviewQueueItem,
+} from "./apiLookupAdapter";
 import { roleLabel } from "./labels";
 
 interface Props {
@@ -10,6 +18,8 @@ interface Props {
 }
 
 const MISSING_NAME = "표시명 없음";
+const ENTITY_ABSENT = "이 업체는 해당 앵커 창에 없습니다";
+const MONTH_ABSENT = "선택한 앵커월의 조회 인덱스가 없습니다";
 
 function hitLabel(hit: { display_name: string | null }) {
   const name = hit.display_name?.trim();
@@ -29,7 +39,26 @@ function queueMeta(item: ReviewQueueItem) {
   return bits.join(" · ");
 }
 
+function availableMonths(status: ApiStatus) {
+  if (Array.isArray(status.available_anchor_months) && status.available_anchor_months.length > 0) {
+    return status.available_anchor_months;
+  }
+  return [status.anchor_month];
+}
+
+function defaultMonth(status: ApiStatus) {
+  return status.default_anchor_month ?? status.anchor_month;
+}
+
+function lookupErrorMessage(error: unknown) {
+  if (error instanceof LookupEntityMissingError) return ENTITY_ABSENT;
+  if (error instanceof LookupMonthUnavailableError) return MONTH_ABSENT;
+  return "해당 업체를 조회하지 못했습니다.";
+}
+
 export default function ApiModeApp({ adapter, status }: Props) {
+  const months = availableMonths(status);
+  const [anchorMonth, setAnchorMonth] = useState(defaultMonth(status));
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<CatalogHit[]>([]);
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
@@ -38,21 +67,19 @@ export default function ApiModeApp({ adapter, status }: Props) {
   const [state, setState] = useState<LoadState | { kind: "idle" }>({ kind: "idle" });
 
   useEffect(() => {
-    setState({ kind: "idle" });
     setHits([]);
-    setSelectedId(null);
     setQueue(null);
     setQueueError(null);
-    void adapter.reviewQueue()
+    void adapter.reviewQueue(anchorMonth)
       .then((payload) => {
         setQueue(payload);
         setQueueError(null);
       })
-      .catch(() => {
+      .catch((error) => {
         setQueue(null);
-        setQueueError("유통업체 검토 목록을 읽지 못했습니다.");
+        setQueueError(error instanceof LookupMonthUnavailableError ? MONTH_ABSENT : "유통업체 검토 목록을 읽지 못했습니다.");
       });
-  }, [adapter]);
+  }, [adapter, anchorMonth]);
 
   useEffect(() => {
     const selected = query.trim();
@@ -61,10 +88,10 @@ export default function ApiModeApp({ adapter, status }: Props) {
       return;
     }
     const handle = window.setTimeout(() => {
-      void adapter.search(selected).then(setHits).catch(() => setHits([]));
+      void adapter.search(selected, 20, anchorMonth).then(setHits).catch(() => setHits([]));
     }, 200);
     return () => window.clearTimeout(handle);
-  }, [adapter, query]);
+  }, [adapter, query, anchorMonth]);
 
   async function lookupHit(hit: { entity_id: string; display_name: string | null }) {
     setQuery(hitLabel(hit));
@@ -72,9 +99,9 @@ export default function ApiModeApp({ adapter, status }: Props) {
     setSelectedId(hit.entity_id);
     setState({ kind: "loading" });
     try {
-      setState(await adapter.lookup(hit.entity_id));
-    } catch {
-      setState({ kind: "error", message: "해당 업체를 조회하지 못했습니다." });
+      setState(await adapter.lookup(hit.entity_id, anchorMonth));
+    } catch (error) {
+      setState({ kind: "error", message: lookupErrorMessage(error) });
     }
   }
 
@@ -85,7 +112,7 @@ export default function ApiModeApp({ adapter, status }: Props) {
       setState({ kind: "error", message: "조회할 업체명을 입력하십시오." });
       return;
     }
-    const matches = hits.length > 0 ? hits : await adapter.search(selected).catch(() => []);
+    const matches = hits.length > 0 ? hits : await adapter.search(selected, 20, anchorMonth).catch(() => []);
     if (matches.length === 1) {
       await lookupHit(matches[0]);
       return;
@@ -96,6 +123,21 @@ export default function ApiModeApp({ adapter, status }: Props) {
     }
     setHits(matches);
     setState({ kind: "error", message: "같은 이름이 여러 업체에 있습니다. 목록에서 선택하십시오." });
+  }
+
+  async function onAnchorChange(next: string) {
+    setAnchorMonth(next);
+    setHits([]);
+    if (!selectedId) {
+      setState({ kind: "idle" });
+      return;
+    }
+    setState({ kind: "loading" });
+    try {
+      setState(await adapter.lookup(selectedId, next));
+    } catch (error) {
+      setState({ kind: "error", message: lookupErrorMessage(error) });
+    }
   }
 
   return (
@@ -109,13 +151,26 @@ export default function ApiModeApp({ adapter, status }: Props) {
       </header>
       <section className="status">
         <strong>조회 인덱스</strong>
-        <span>앵커월 {status.anchor_month} · 분석 구간 {status.window_months.join(" ~ ")}</span>
+        <span>앵커월 {anchorMonth} · 분석 구간 {(queue?.window_months ?? status.window_months).join(" ~ ")}</span>
         <span>인덱스 업체 {status.entity_count} · 간선 {status.edge_count}</span>
         <span>상태: 로컬 조회 전용</span>
       </section>
+      <form className="anchor-form" onSubmit={(event) => event.preventDefault()}>
+        <label htmlFor="anchor-month">완료 앵커월</label>
+        <select
+          id="anchor-month"
+          name="anchor-month"
+          value={anchorMonth}
+          onChange={(event) => void onAnchorChange(event.target.value)}
+        >
+          {months.map((month) => (
+            <option key={month} value={month}>{month}</option>
+          ))}
+        </select>
+      </form>
       <section className="review-queue" aria-labelledby="review-queue-heading">
         <h2 id="review-queue-heading">유통업체 검토 우선순위 상위 10곳</h2>
-        <p>완료된 앵커월의 GAD-NR 유통업체군 백분위입니다. 목록에서 고르면 해당 업체의 1-hop이 열립니다.</p>
+        <p>해당 앵커월·해당 역할군 안의 상대 순위입니다. 목록에서 고르면 해당 업체의 1-hop이 열립니다.</p>
         {queueError ? <p>{queueError}</p> : null}
         {queue && queue.entities.length === 0 ? (
           <p>유통업체군에서 검토 우선순위를 매길 수 있는 업체가 없습니다.</p>
@@ -169,7 +224,7 @@ export default function ApiModeApp({ adapter, status }: Props) {
       </div>
       {state.kind === "loading" ? <main className="shell"><p>조회 인덱스를 읽는 중입니다.</p></main> : null}
       {state.kind === "error" ? <main id="main-content" className="shell empty-state" tabIndex={-1}><h2>조회할 수 없습니다</h2><p>{state.message}</p></main> : null}
-      {state.kind === "ready" ? <Ready key={state.graph.selected_entity_id} state={state} hideHeader footer="다른 업체는 위 검토 목록 또는 업체명 조회로 바꾸십시오. 요청마다 모델을 학습하지 않습니다." /> : null}
+      {state.kind === "ready" ? <Ready key={`${anchorMonth}:${state.graph.selected_entity_id}`} state={state} hideHeader footer="다른 업체는 위 검토 목록 또는 업체명 조회로 바꾸십시오. 요청마다 모델을 학습하지 않습니다." /> : null}
     </>
   );
 }

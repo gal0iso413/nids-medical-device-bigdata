@@ -2,5 +2,5 @@
 pandas>=2.2.0,<3.1.0
 pyarrow>=24.0.0,<25.0.0
 openpyxl>=3.1.5,<4.0.0
-# Batch-only exact distinct aggregation for Class 3 serving marts.
+# Batch-only exact distinct aggregation for Class 2 serving marts.
 duckdb>=1.5.5,<1.6.0
