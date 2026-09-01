@@ -29,7 +29,7 @@ join_supply_batch_to_master(batch, lookup) -> MasterJoinBatchResult
 
 Master lineage is a separate namespace from supply lineage. Sorted logical filenames, byte sizes, full SHA-256 values, and adapter contract version form canonical UTF-8 JSON; its SHA-256 becomes both `source_hash` and the suffix of `nids-master-v1:<64hex>`. Absolute paths, input order, execution time, usernames, and machine names are excluded.
 
-Every workbook opens with `openpyxl` `read_only=True` and `data_only=True`. Each sheet is inspected only within the bounded header window. All matching sheets are processed in sorted name order. Missing, duplicate, or ambiguous official key headers fail explicitly; sheet names are not hard-coded.
+Every workbook opens with `openpyxl` `read_only=True` and `data_only=True`. Before header or data iteration, `reset_dimensions()` is used so a stale stored size of `A1` (common in NIDS exports) still yields later columns and rows. Each sheet is inspected only within the bounded header window. All matching sheets are processed in sorted name order. Missing, duplicate, or ambiguous official key headers fail explicitly; sheet names are not hard-coded.
 
 The three official integer codes share one public canonical normalizer with the supply adapter: whitespace is trimmed; exact integers, integral `Decimal`, safe integral floats, and strings such as `10.0` become `10`. Boolean, negative, fractional, non-finite, and precision-unsafe floats above `2**53` are invalid. Leading zeroes are removed only for these official integer-code fields, not for general string identifiers.
 

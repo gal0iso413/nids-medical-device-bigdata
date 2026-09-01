@@ -232,11 +232,14 @@ try {
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class1DistDirectory) -Destination (Join-Path $staging 'sites\class1') -Label 'Class1DistDirectory'
     Copy-VerifiedStaticSite -DistRoot (Get-AnalysisFullPath $Class2DistDirectory) -Destination (Join-Path $staging 'sites\class2') -Label 'Class2DistDirectory'
 
-    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class2-serving-marts.ps1', 'serve-class2-site.ps1', 'rehearse-class2-site.ps1', 'build-class1-lookup-index.ps1', 'serve-class1-site.ps1', 'rehearse-class1-site.ps1', 'run-class1-graph-scale-gate.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
+    foreach ($name in @('analysis-kit-common.ps1', 'verify-analysis-kit.ps1', 'install-analysis-env.ps1', 'run-analysis.ps1', 'keep-session.ps1', 'status-analysis.ps1', 'serve-analysis-sites.ps1', 'build-class2-serving-marts.ps1', 'serve-class2-site.ps1', 'rehearse-class2-site.ps1', 'build-class1-lookup-index.ps1', 'serve-class1-site.ps1', 'rehearse-class1-site.ps1', 'run-class1-graph-scale-gate.ps1', 'smoke-analysis-kit.ps1', 'field-run.example.toml', 'README.md')) {
         $source = Join-Path $PSScriptRoot $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required kit support file is missing: $name" }
         Copy-Item -LiteralPath $source -Destination (Join-Path $staging $name)
     }
+    $playbook = Join-Path $repositoryRoot 'docs\data\onsite-operator-playbook.md'
+    if (-not (Test-Path -LiteralPath $playbook -PathType Leaf)) { throw "Required kit support file is missing: onsite-operator-playbook.md" }
+    Copy-Item -LiteralPath $playbook -Destination (Join-Path $staging 'onsite-operator-playbook.md')
 
     $snapshotRoot = Join-Path $staging '.source-snapshot'
     & $PythonExe -I (Join-Path $PSScriptRoot 'source_snapshot.py') $repositoryRoot $snapshotRoot | Out-Null

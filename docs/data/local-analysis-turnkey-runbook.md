@@ -10,10 +10,11 @@ SQLite, generated JSON, model results, or site-specific configuration.
 Run directly in this Cursor checkout when the approved local Python environment
 is already available. Use the [offline analysis kit](../../tools/offline/analysis-kit/README.md)
 when moving the workflow to another PC; its installer verifies the exact wheel
-set before creating an isolated environment. The kit serves Class 1 through the
-localhost lookup API (`127.0.0.1:8011`) and Class 2 through the localhost
-comparison API (`127.0.0.1:8012`). It does not publish generated JSON into the
-static site roots.
+set before creating an isolated environment. Onsite USB operation uses the
+[onsite operator playbook](onsite-operator-playbook.md). The kit serves Class 1
+through the localhost lookup API (`127.0.0.1:8011`) and Class 2 through the
+localhost comparison API (`127.0.0.1:8012`). It does not publish generated JSON
+into the static site roots.
 
 Do not use removed Class 1 graph/Excel/model-comparison commands or any
 Streamlit entrypoint. The only Class 1 runtime entrypoint is

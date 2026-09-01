@@ -7,20 +7,21 @@ import "./styles.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element is missing.");
+const mountNode: HTMLElement = rootElement;
 
 async function render() {
   if (import.meta.env.VITE_CLASS1_DATA_SOURCE === "api") {
     try {
       const adapter = createClass1LookupAdapter(import.meta.env.VITE_CLASS1_API_BASE || "/api");
       const status = await adapter.status();
-      createRoot(rootElement).render(
+      createRoot(mountNode).render(
         <StrictMode>
           <ApiModeApp adapter={adapter} status={status} />
         </StrictMode>,
       );
       return;
     } catch {
-      createRoot(rootElement).render(
+      createRoot(mountNode).render(
         <StrictMode>
           <main id="main-content" className="shell empty-state" tabIndex={-1}>
             <h1>내부 분석 데이터를 표시할 수 없습니다</h1>
@@ -31,7 +32,7 @@ async function render() {
       return;
     }
   }
-  createRoot(rootElement).render(
+  createRoot(mountNode).render(
     <StrictMode>
       <App />
     </StrictMode>,

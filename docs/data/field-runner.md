@@ -52,7 +52,11 @@ minimum_free_bytes = 0
 
 `supply_workbooks` is a pool of 10-day files. `run` groups them by filename month,
 publishes each closed month (exactly three files), skips already-published months,
-and reports months that are not exactly three files. A new Master lookup is used
+and reports months that are not exactly three files. A source-row conflict or other
+non-retryable month error leaves that month unpublished, records
+`skipped_source_error` in the run JSON, and continues later closed months.
+Disk locks (`OSError` / WinError 5) and `CheckpointMemoryLimitError` still stop
+the run so the same month can be retried. A new Master lookup is used
 only for the next closed supply month; already published months are not re-joined.
 
 For Master-workbook mode, remove `source_hash` and set
@@ -157,9 +161,10 @@ timestamp.
   rerun the unchanged source/config. The CLI never deletes it.
 - `CheckpointMemoryLimitError`: retain the active checkpoint and obtain an
   approved larger `max_month_fact_bytes`, or stop for a chunked-writer decision.
-- checksum, manifest, lineage, or conflict error: quarantine the run for
-  investigation. Do not edit manifests, overwrite partitions, or reset the
-  checkpoint.
+- checksum, manifest, lineage, or source-row conflict on one month: that month
+  is not published; later closed months continue. Do not edit manifests,
+  overwrite partitions, or reset the checkpoint. Inspect
+  `skipped_source_error_months` in the run JSON.
 
 ## Onsite benchmark record
 

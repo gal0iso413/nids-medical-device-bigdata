@@ -6,7 +6,7 @@
 
 ## 범위와 생산 근거
 
-이 adapter는 NIDS 공급내역 Excel을 `openpyxl`의 `read_only=True`, `data_only=True`로 순회해 PR-01의 정규화 전 source row 계약으로 변환한다. sheet 전체를 `pandas.read_excel`로 적재하지 않으며 호출자가 지정한 `batch_size` 이하의 `DataFrame`만 방출한다. 원본 master join, `aggregate_company_counterparty_product_month`, `write_monthly_fact_partitions`는 호출하지 않는다.
+이 adapter는 NIDS 공급내역 Excel을 `openpyxl`의 `read_only=True`, `data_only=True`로 순회해 PR-01의 정규화 전 source row 계약으로 변환한다. 저장된 worksheet dimension이 `A1`로 남아 있는 NIDS보내기 파일을 읽기 위해, 헤더·데이터 순회 전에 `reset_dimensions()`로 그 크기를 무시한다. sheet 전체를 `pandas.read_excel`로 적재하지 않으며 호출자가 지정한 `batch_size` 이하의 `DataFrame`만 방출한다. 원본 master join, `aggregate_company_counterparty_product_month`, `write_monthly_fact_partitions`는 호출하지 않는다.
 
 생산 규모의 우선 근거는 [`onsite_visit1_summary.md`](../../shared_docs/structured/onsite_visit1_summary.md)다. 확인된 공급 데이터는 12개 workbook, 4개월 12,000,000행, 71열이고 장기 보유 범위는 2020-08~2026-04다. 이번 PR은 synthetic workbook만 검증했으며 실제 production/top7 파일을 읽지 않았다.
 

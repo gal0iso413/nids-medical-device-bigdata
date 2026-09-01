@@ -21,6 +21,7 @@ class SourceSnapshotTests(unittest.TestCase):
             self.assertIn("data_pipeline/analysis/class1_lookup_index.py", [x["relative_path"] for x in first["files"]])
             self.assertIn("data_pipeline/ingest/company_display_name.py", [x["relative_path"] for x in first["files"]])
             self.assertIn("docs/service/class1-local-integrated-host.md", [x["relative_path"] for x in first["files"]])
+            self.assertIn("docs/data/onsite-operator-playbook.md", [x["relative_path"] for x in first["files"]])
             raw = (Path(temporary) / "one/source-snapshot-manifest.json").read_bytes()
             self.assertEqual(raw, canonical(json.loads(raw)) + b"\n")
             self.assertNotIn(str(root).encode(), raw)

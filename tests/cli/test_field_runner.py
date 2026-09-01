@@ -11,8 +11,10 @@ from uuid import uuid4
 
 from data_pipeline.cli.config import FieldRunConfigError, load_field_run_config
 import data_pipeline.cli.field_runner as runner
+from data_pipeline.contracts import ContractValidationError
 from data_pipeline.orchestration import OrchestrationResult
 from data_pipeline.storage import MasterLookupBuildResult, MasterLookupVerification
+from data_pipeline.storage.monthly_fact_parquet import MonthlyFactStorageError
 
 
 HASH = "a" * 64
@@ -47,13 +49,20 @@ class FieldRunnerTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def write_config(self, *, master: str | None = None, extra: str = "") -> Path:
+    def write_config(
+        self,
+        *,
+        master: str | None = None,
+        extra: str = "",
+        supply_names: tuple[str, ...] | None = None,
+    ) -> Path:
         master = master or f'lookup_root = "lookup"\nsource_hash = "{HASH}"'
+        names = self.supply_names if supply_names is None else supply_names
         path = self.root / "field-run.toml"
         path.write_text(
             f'''config_version = "1.1.0"
 [paths]
-supply_workbooks = {list(self.supply_names)!r}
+supply_workbooks = {list(names)!r}
 checkpoint_root = "checkpoint"
 output_root = "output"
 [master]
@@ -67,6 +76,18 @@ minimum_free_bytes = 0
             encoding="utf-8",
         )
         return path
+
+    def two_month_config(self):
+        february = (
+            "공급내역보고자료(20260201~20260210).xlsx",
+            "공급내역보고자료(20260211~20260220).xlsx",
+            "공급내역보고자료(20260221~20260228).xlsx",
+        )
+        for name in february:
+            (self.root / name).write_bytes(b"synthetic")
+        return load_field_run_config(
+            self.write_config(supply_names=self.supply_names + february)
+        )
 
     def config(self, **kwargs):
         return load_field_run_config(self.write_config(**kwargs))
@@ -169,6 +190,44 @@ minimum_free_bytes = 0
         for call in orchestration.call_args_list:
             self.assertEqual(tuple(call.kwargs["supply_paths"]), self.supply_paths)
             self.assertEqual(call.kwargs["batch_size"], config.batch_size)
+        self.assertEqual(one["skipped_source_error_months"], [])
+
+    def test_run_skips_source_conflict_and_continues_next_month(self) -> None:
+        config = self.two_month_config()
+        conflict = ContractValidationError(
+            "blocked:source_row_conflict: identical idempotency keys contain "
+            "different normalized content; conflicting source_row_id values: "
+            "total=1; sample=['nids-row-v1:ab']; omitted=0"
+        )
+        second = OrchestrationResult("completed", "c" * 64, ("202602",), (), (), "relative.json")
+        with patch.object(runner, "run_preflight", return_value=runner.PreflightReport(True, ())), patch.object(
+            runner, "run_supply_monthly_orchestration", side_effect=(conflict, second)
+        ) as orchestration, patch.object(runner, "_write_json"):
+            payload = runner.run_pipeline(config)
+        self.assertEqual(orchestration.call_count, 2)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["skipped_source_error_months"], ["202601"])
+        self.assertEqual(payload["written_months"], ["202602"])
+        self.assertEqual(payload["months"][0]["status"], "skipped_source_error")
+        self.assertEqual(payload["months"][0]["error"], "ContractValidationError")
+        self.assertEqual(payload["months"][1]["status"], "completed")
+
+    def test_run_stops_on_wrapped_os_error_without_skipping_later_months(self) -> None:
+        config = self.two_month_config()
+
+        def locked(*args, **kwargs):
+            del args, kwargs
+            raise MonthlyFactStorageError(
+                "Could not publish final partition 202601; no competing "
+                "partition is available for verification"
+            ) from PermissionError(5, "Access is denied")
+
+        with patch.object(runner, "run_preflight", return_value=runner.PreflightReport(True, ())), patch.object(
+            runner, "run_supply_monthly_orchestration", side_effect=locked
+        ) as orchestration:
+            with self.assertRaises(MonthlyFactStorageError):
+                runner.run_pipeline(config)
+        self.assertEqual(orchestration.call_count, 1)
 
     def test_master_workbook_mode_calls_existing_builder(self) -> None:
         master = self.root / "synthetic-master.xlsx"

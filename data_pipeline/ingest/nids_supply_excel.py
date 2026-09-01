@@ -427,6 +427,17 @@ def _header_text(value: Any) -> str | None:
     return text or None
 
 
+def _ignore_stored_worksheet_size(sheet: Any) -> None:
+    """Ignore a stale xlsx dimension so read_only mode can see every used cell.
+
+    NIDS exports often store ``A1`` as the worksheet size. openpyxl would then
+    stop at column A and row 1 even when later cells exist in the XML.
+    """
+    reset = getattr(sheet, "reset_dimensions", None)
+    if callable(reset):
+        reset()
+
+
 def _discover_open_workbook(
     workbook: Workbook,
     *,
@@ -437,6 +448,7 @@ def _discover_open_workbook(
     discovered: list[DiscoveredSheet] = []
     for sheet_name in sorted(workbook.sheetnames):
         sheet = workbook[sheet_name]
+        _ignore_stored_worksheet_size(sheet)
         candidates: list[DiscoveredSheet] = []
         for row_number, row in enumerate(
             islice(sheet.iter_rows(values_only=True), header_scan_limit), start=1
@@ -948,6 +960,7 @@ class SupplyExcelStream(Iterable[pd.DataFrame]):
                         )
                         self.report.sheet_profiles.append(profile)
                         sheet = workbook[discovered.name]
+                        _ignore_stored_worksheet_size(sheet)
                         for row_number, row in enumerate(
                             sheet.iter_rows(
                                 min_row=discovered.header_row + 1,

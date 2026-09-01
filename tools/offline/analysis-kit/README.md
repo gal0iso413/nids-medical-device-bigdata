@@ -5,6 +5,13 @@ contracts. It does not alter the older pipeline-only field kit. The builder is
 run on an internet-connected preparation PC; every install, verification,
 analysis, and localhost serving action in the resulting kit is offline.
 
+Onsite operators (Wed 09:00–Thu 18:00, USB/망연계, no internet) should follow
+the Korean [onsite operator playbook](../../docs/data/onsite-operator-playbook.md).
+The published kit copies that file to `onsite-operator-playbook.md`. Use
+`keep-session.ps1` around long commands, `run-analysis.ps1 -LogPath` for a
+command transcript, and `status-analysis.ps1` to read checkpoint/fact/Class 1
+manifests without reopening Excel or Parquet.
+
 The runtime is CPython 3.13.12 Windows x64 and its single hash-locked
 wheelhouse. `run-analysis.ps1` only delegates to the existing field runner,
 Class 2 exporter, and Class 1 anchor runner. It contains no pipeline or model
@@ -54,15 +61,18 @@ marts stay outside the static roots.
 ## Site-PC sequence
 
 Paths below are placeholders. Keep Excel, monthly facts, model output, lookup
-indexes, and marts outside the kit.
+indexes, and marts outside the kit. After the pipeline, build and serve Class 2
+before GAD-NR. Do not run the pipeline and GAD-NR at the same time.
 
 ```powershell
-.\run-analysis.ps1 -Command preflight -Config C:\secure\field-run.toml
-.\run-analysis.ps1 -Command pipeline -Config C:\secure\field-run.toml
-.\run-class1-graph-scale-gate.ps1 -Config C:\secure\class1-graph-scale-gate.json -Report C:\secure\reports\class1-graph-scale-gate.json
-.\run-analysis.ps1 -Command class1-run -Config C:\secure\field-run.toml
-.\build-class1-lookup-index.ps1 -FactRoot D:\nids\monthly-fact -RunRoot C:\secure\class1-offline-anchor -OutputRoot C:\secure\class1-lookup-index -AnchorMonth 202403
+.\keep-session.ps1 -LogPath C:\secure\logs\pipeline.log -File .\run-analysis.ps1 -ArgumentList @('-Command','preflight','-Config','C:\secure\field-run.toml')
+.\keep-session.ps1 -LogPath C:\secure\logs\pipeline.log -File .\run-analysis.ps1 -ArgumentList @('-Command','pipeline','-Config','C:\secure\field-run.toml','-LogPath','C:\secure\logs\pipeline.cmd.log')
+.\status-analysis.ps1 -Config C:\secure\field-run.toml -MartRoot C:\secure\class2-serving-marts
 .\build-class2-serving-marts.ps1 -FieldRunConfig C:\secure\field-run.toml -FactRoot D:\nids\monthly-fact -OutputRoot C:\secure\class2-serving-marts
+.\serve-class2-site.ps1 -MartRoot C:\secure\class2-serving-marts
+.\run-class1-graph-scale-gate.ps1 -Config C:\secure\class1-graph-scale-gate.json -Report C:\secure\reports\class1-graph-scale-gate.json
+.\run-analysis.ps1 -Command class1-run -Config C:\secure\field-run.toml -LogPath C:\secure\logs\class1.log
+.\build-class1-lookup-index.ps1 -FactRoot D:\nids\monthly-fact -RunRoot C:\secure\class1-offline-anchor -OutputRoot C:\secure\class1-lookup-index -AnchorMonth 202403
 .\serve-analysis-sites.ps1 -IndexRoot C:\secure\class1-lookup-index -MartRoot C:\secure\class2-serving-marts
 ```
 

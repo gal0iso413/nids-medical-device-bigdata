@@ -21,6 +21,7 @@ from data_pipeline.checkpoints import (
 )
 from data_pipeline.checkpoints.supply_monthly import (
     CHECKPOINT_CONTRACT_VERSION,
+    CheckpointMemoryLimitError,
     DATABASE_FILENAME as CHECKPOINT_DATABASE_FILENAME,
     DATASET_NAME as CHECKPOINT_DATASET_NAME,
     RUN_MANIFEST_FILENAME,
@@ -395,6 +396,36 @@ def _rejected_payload(grouping) -> list[dict[str, Any]]:
     ]
 
 
+def _is_retryable_month_failure(exc: BaseException) -> bool:
+    """Return True when a later rerun of the same month may succeed.
+
+    Disk locks, permission errors, and configured memory ceilings must stop
+    the field run instead of omitting that month.
+    """
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (OSError, MemoryError, CheckpointMemoryLimitError)):
+            return True
+        current = current.__cause__
+    return False
+
+
+def _skipped_month_result(closed_month: str, exc: BaseException, config: FieldRunConfig) -> dict[str, Any]:
+    return {
+        "error": type(exc).__name__,
+        "message": _safe_error_message(exc, config),
+        "month": closed_month,
+        "relative_complete_manifest_path": None,
+        "run_id": None,
+        "skipped_unmatched_only_months": [],
+        "status": "skipped_source_error",
+        "unchanged_months": [],
+        "written_months": [],
+    }
+
+
 def run_pipeline(config: FieldRunConfig) -> dict[str, Any]:
     report = run_preflight(config)
     if not report.ok:
@@ -412,15 +443,33 @@ def run_pipeline(config: FieldRunConfig) -> dict[str, Any]:
     month_results: list[dict[str, Any]] = []
     any_written = False
     for closed in grouping.closed:
-        result = run_supply_monthly_orchestration(
-            supply_paths=closed.paths,
-            master_lookup_root=config.master_lookup_root,
-            master_source_hash=source_hash,
-            checkpoint_root=config.checkpoint_root,
-            output_root=config.output_root,
-            max_month_fact_bytes=config.max_month_fact_bytes,
-            batch_size=config.batch_size,
-        )
+        try:
+            result = run_supply_monthly_orchestration(
+                supply_paths=closed.paths,
+                master_lookup_root=config.master_lookup_root,
+                master_source_hash=source_hash,
+                checkpoint_root=config.checkpoint_root,
+                output_root=config.output_root,
+                max_month_fact_bytes=config.max_month_fact_bytes,
+                batch_size=config.batch_size,
+            )
+        except Exception as exc:
+            if _is_retryable_month_failure(exc):
+                raise
+            skipped = _skipped_month_result(closed.month, exc, config)
+            _write_json(
+                sys.stderr,
+                {
+                    "error": skipped["error"],
+                    "event": "skipped_source_error",
+                    "hint": "This month was not published. Later closed months continue. Keep artifacts unchanged.",
+                    "message": skipped["message"],
+                    "month": closed.month,
+                    "stage": "run",
+                },
+            )
+            month_results.append(skipped)
+            continue
         any_written = any_written or result.status == "completed"
         month_results.append(
             {
@@ -433,11 +482,15 @@ def run_pipeline(config: FieldRunConfig) -> dict[str, Any]:
                 "relative_complete_manifest_path": result.relative_complete_manifest_path,
             }
         )
+    skipped_months = [
+        item["month"] for item in month_results if item["status"] == "skipped_source_error"
+    ]
     return {
         "command": "run",
-        "status": "completed" if any_written else "unchanged",
+        "status": "completed" if any_written or skipped_months else "unchanged",
         "rejected_months": _rejected_payload(grouping),
         "months": month_results,
+        "skipped_source_error_months": skipped_months,
         "written_months": [month for item in month_results for month in item["written_months"]],
         "unchanged_months": [month for item in month_results for month in item["unchanged_months"]],
     }

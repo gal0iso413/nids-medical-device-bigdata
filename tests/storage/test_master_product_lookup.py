@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import io
 import json
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -60,6 +63,29 @@ def write_master(
             sheet.append(row)
     workbook.save(path)
     workbook.close()
+
+
+def collapse_xlsx_dimension(path: Path, ref: str = "A1") -> None:
+    """Rewrite stored worksheet dimension so read_only mode would see one column."""
+    original = path.read_bytes()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(original), "r") as source:
+        with zipfile.ZipFile(buffer, "w") as dest:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                if "/worksheets/" in info.filename and info.filename.endswith(".xml"):
+                    text = data.decode("utf-8")
+                    updated, count = re.subn(
+                        r'(<dimension[^>]*ref=")[^"]+(")',
+                        rf"\g<1>{ref}\2",
+                        text,
+                        count=1,
+                    )
+                    if count != 1:
+                        raise AssertionError(f"dimension not rewritten: {info.filename}")
+                    data = updated.encode("utf-8")
+                dest.writestr(info, data)
+    path.write_bytes(buffer.getvalue())
 
 
 def default_master(path: Path, *, duplicate: bool = False) -> Path:
@@ -148,6 +174,21 @@ class MasterProductLookupTests(unittest.TestCase):
         discovered = discover_master_sheets(self.master_path)
         self.assertEqual([sheet.name for sheet in discovered], ["a-sheet", "m-sheet", "z-sheet"])
         self.assertTrue(all(sheet.header_row == 2 for sheet in discovered))
+
+    def test_stale_a1_dimension_still_discovers_and_streams_keys(self) -> None:
+        collapse_xlsx_dimension(self.master_path)
+        workbook = load_workbook(self.master_path, read_only=True, data_only=True)
+        try:
+            sheet = workbook["a-sheet"]
+            first = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            self.assertEqual(len(first), 1)
+        finally:
+            workbook.close()
+        discovered = discover_master_sheets(self.master_path)
+        self.assertEqual([sheet.name for sheet in discovered], ["a-sheet", "m-sheet", "z-sheet"])
+        with stream_master_product_keys([self.master_path]) as stream:
+            keys = list(stream)
+        self.assertEqual(len(keys), 3)
 
     def test_only_confirmed_utf8_master_headers_are_supported(self) -> None:
         self.assertEqual(

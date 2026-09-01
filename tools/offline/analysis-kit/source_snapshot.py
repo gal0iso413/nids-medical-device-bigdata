@@ -10,6 +10,7 @@ ALLOWED_UNTRACKED = (
     "data_pipeline/ingest/company_display_name.py",
     "data_pipeline/observability/class1_graph_scale_gate.py",
     "docs/data/offline-analysis-python-environment.md",
+    "docs/data/onsite-operator-playbook.md",
     "docs/data/class1-graph-scale-gate.md",
     "docs/data/company-display-name.md",
     "docs/service/class2-local-integrated-host.md",

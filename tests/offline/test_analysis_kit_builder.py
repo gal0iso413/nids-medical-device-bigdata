@@ -52,6 +52,9 @@ class AnalysisKitBuilderTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+        playbook = self.repository / "docs" / "data" / "onsite-operator-playbook.md"
+        playbook.parent.mkdir(parents=True, exist_ok=True)
+        playbook.write_text("# onsite\n", encoding="utf-8")
         (self.repository / "snapshot-input.txt").write_text("snapshot\n", encoding="utf-8")
         (self.script_root / "source_snapshot.py").write_text(
             """import hashlib, json, pathlib, shutil, sys
@@ -137,6 +140,9 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
             generated = self.output / "sites" / site / "generated"
             self.assertTrue(generated.is_dir())
             self.assertEqual(list(generated.iterdir()), [])
+        self.assertTrue((self.output / "keep-session.ps1").is_file())
+        self.assertTrue((self.output / "status-analysis.ps1").is_file())
+        self.assertTrue((self.output / "onsite-operator-playbook.md").is_file())
 
         manifest_bytes = manifest_path.read_bytes()
         second = self.build()
@@ -208,9 +214,116 @@ manifest = {'base_commit_sha':'a'*40,'source_mode':'working-tree','files':entrie
         self.assertNotIn("publish-class1-web", run)
         self.assertNotIn("verify-class1-web", run)
         self.assertTrue((SCRIPT_SOURCE / "serve-class1-site.ps1").is_file())
+        class1_serve = (SCRIPT_SOURCE / "serve-class1-site.ps1").read_text(encoding="utf-8")
+        class2_serve = (SCRIPT_SOURCE / "serve-class2-site.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("[string]$Host", class1_serve)
+        self.assertNotIn("[string]$Host", class2_serve)
+        self.assertIn("$ListenAddress", class1_serve)
+        self.assertIn("$ListenAddress", class2_serve)
         self.assertTrue((SCRIPT_SOURCE / "build-class1-lookup-index.ps1").is_file())
         self.assertTrue((SCRIPT_SOURCE / "rehearse-class1-site.ps1").is_file())
         self.assertTrue((SCRIPT_SOURCE / "run-class1-graph-scale-gate.ps1").is_file())
+        self.assertTrue((SCRIPT_SOURCE / "keep-session.ps1").is_file())
+        self.assertTrue((SCRIPT_SOURCE / "status-analysis.ps1").is_file())
+        self.assertIn("LogPath", run)
+        keep = (SCRIPT_SOURCE / "keep-session.ps1").read_text(encoding="utf-8")
+        self.assertIn("SetThreadExecutionState", keep)
+        self.assertNotIn("ES_DISPLAY_REQUIRED", keep)
+        status = (SCRIPT_SOURCE / "status-analysis.ps1").read_text(encoding="utf-8")
+        self.assertIn("MartRoot", status)
+        self.assertIn("_sealed_manifest.json", status)
+        self.assertIn("run-manifest.json", status)
+        builder = (SCRIPT_SOURCE / "build-analysis-kit.ps1").read_text(encoding="utf-8")
+        self.assertIn("keep-session.ps1", builder)
+        self.assertIn("status-analysis.ps1", builder)
+        self.assertIn("onsite-operator-playbook.md", builder)
+
+    def test_status_and_keep_session_scripts_smoke(self):
+        workspace = self.root / "status-workspace"
+        checkpoint = workspace / "checkpoints" / "supply_monthly_orchestration" / "checkpoint_version=1.0.0" / ("run_id=" + "a" * 64)
+        checkpoint.mkdir(parents=True)
+        (checkpoint / "_sealed_manifest.json").write_text("{}\n", encoding="utf-8")
+        (checkpoint / "_complete_manifest.json").write_text(
+            '{"published_months":[{"month":"202403"}]}\n', encoding="utf-8"
+        )
+        fact = (
+            workspace / "facts" / "fact_company_counterparty_product_month"
+            / "schema_version=1.0.0" / "month=202403"
+        )
+        fact.mkdir(parents=True)
+        (fact / "_manifest.json").write_text(
+            '{"partition_value":"202403"}\n', encoding="utf-8"
+        )
+        (fact / "part-00000.parquet").write_bytes(b"not-read")
+        class1_out = workspace / "class1"
+        (class1_out / "anchor_month=202403").mkdir(parents=True)
+        (class1_out / "anchor_month=202403" / "run-manifest.json").write_text(
+            '{"anchor_month":"202403","run_status":"completed"}\n', encoding="utf-8"
+        )
+        class1_config = workspace / "class1-anchor.json"
+        class1_config.write_text(
+            json.dumps({"output_root": str(class1_out).replace("\\", "/")}),
+            encoding="utf-8",
+        )
+        mart = workspace / "mart" / "class2_serving_mart" / "schema_version=1.1.0"
+        mart.mkdir(parents=True)
+        (mart / "_manifest.json").write_text(
+            '{"period_start":"202403","period_end":"202403","created_fingerprint":"ab"}\n',
+            encoding="utf-8",
+        )
+        config = workspace / "field-run.toml"
+        config.write_text(
+            "\n".join(
+                [
+                    "[paths]",
+                    f'checkpoint_root = "{checkpoint.parents[2].as_posix()}"',
+                    f'output_root = "{(workspace / "facts").as_posix()}"',
+                    "[class1]",
+                    f'config = "{class1_config.as_posix()}"',
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        status = subprocess.run(
+            [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", str(SCRIPT_SOURCE / "status-analysis.ps1"),
+                "-Config", str(config),
+                "-MartRoot", str(workspace / "mart"),
+            ],
+            text=True, capture_output=True, encoding="utf-8", errors="replace",
+        )
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        payload = json.loads(status.stdout.strip().splitlines()[-1])
+        def as_list(value):
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return value
+            return [value]
+        self.assertEqual(payload["checkpoint"]["sealed"], 1)
+        self.assertEqual(payload["checkpoint"]["complete"], 1)
+        self.assertEqual(as_list(payload["checkpoint"]["complete_months"]), ["202403"])
+        self.assertEqual(as_list(payload["verified_fact_months"]["months"]), ["202403"])
+        self.assertEqual(as_list(payload["class1"]["anchors"])[0]["run_status"], "completed")
+        self.assertEqual(payload["class2_mart"]["period_start"], "202403")
+
+        helper = workspace / "ok.ps1"
+        helper.write_text("Write-Output 'keep-session-ok'\n", encoding="utf-8")
+        log_path = workspace / "keep-session.log"
+        keep = subprocess.run(
+            [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", str(SCRIPT_SOURCE / "keep-session.ps1"),
+                "-File", str(helper),
+                "-LogPath", str(log_path),
+            ],
+            text=True, capture_output=True, encoding="utf-8", errors="replace",
+        )
+        self.assertEqual(keep.returncode, 0, keep.stdout + keep.stderr)
+        self.assertIn("keep-session-ok", keep.stdout)
+        self.assertTrue(log_path.is_file())
 
 
 if __name__ == "__main__":

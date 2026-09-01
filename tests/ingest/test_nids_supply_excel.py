@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import io
 from pathlib import Path
+import re
 import shutil
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
+import zipfile
 
 import pandas as pd
 from pandas.testing import assert_frame_equal
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from data_pipeline.contracts import SOURCE_REQUIRED_COLUMNS, normalize_source_rows
 from data_pipeline.ingest import nids_supply_excel as adapter
@@ -114,6 +117,29 @@ def write_workbook(
     workbook.close()
 
 
+def collapse_xlsx_dimension(path: Path, ref: str = "A1") -> None:
+    """Rewrite stored worksheet dimension so read_only mode would see one column."""
+    original = path.read_bytes()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(original), "r") as source:
+        with zipfile.ZipFile(buffer, "w") as dest:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                if "/worksheets/" in info.filename and info.filename.endswith(".xml"):
+                    text = data.decode("utf-8")
+                    updated, count = re.subn(
+                        r'(<dimension[^>]*ref=")[^"]+(")',
+                        rf"\g<1>{ref}\2",
+                        text,
+                        count=1,
+                    )
+                    if count != 1:
+                        raise AssertionError(f"dimension not rewritten: {info.filename}")
+                    data = updated.encode("utf-8")
+                dest.writestr(info, data)
+    path.write_bytes(buffer.getvalue())
+
+
 def data_rows(path: Path, *, batch_size: int = 100) -> tuple[pd.DataFrame, object]:
     stream = stream_nids_supply_excel([path], batch_size=batch_size)
     batches = list(stream)
@@ -167,6 +193,23 @@ class NidsSupplyExcelAdapterTests(unittest.TestCase):
         self.assertEqual(len(discovered), 1)
         self.assertEqual(discovered[0].name, "random data title")
         self.assertEqual(discovered[0].header_row, 2)
+
+    def test_stale_a1_dimension_still_discovers_and_streams_rows(self) -> None:
+        path = self.workbook()
+        collapse_xlsx_dimension(path)
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            sheet = workbook[workbook.sheetnames[-1]]
+            first = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            self.assertEqual(len(first), 1)
+        finally:
+            workbook.close()
+        discovered = discover_supply_sheets(path, header_scan_limit=5)
+        self.assertEqual(discovered[0].name, "random data title")
+        self.assertEqual(discovered[0].header_row, 2)
+        frame, _report = data_rows(path)
+        self.assertEqual(len(frame), 1)
+        self.assertEqual(frame.loc[0, "item_serial"], "1")
 
     def test_discovery_order_is_deterministic_when_sheet_order_changes(self) -> None:
         first = self.temp_dir / "first.xlsx"
